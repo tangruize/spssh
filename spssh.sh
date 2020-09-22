@@ -20,7 +20,7 @@ EXITPID=$!
 for i in $*; do
     TMPFIFO=`mktemp -u`
     mkfifo $TMPFIFO
-    CMD="bash -c \"tail -F $TMPFILE --pid $EXITPID >> $TMPFIFO && pkill -g 0 cat & ssh -t $i 'bash -i' < $TMPFIFO & echo 'set -x' >> $TMPFIFO; cat >> $TMPFIFO\""
+    CMD="bash -c 'tail -F $TMPFILE --pid $EXITPID >> $TMPFIFO && pkill -g 0 cat & stty -echo -echoctl raw; ssh -tt $i < $TMPFIFO & cat >> $TMPFIFO'"
     if test "$XTERM" = "/usr/bin/gnome-terminal"; then
         eval $XTERM -- $CMD &
     else
@@ -29,7 +29,8 @@ for i in $*; do
 done
 
 trap 'echo Quitting ...; pkill -g 0 cat; trap "" 2 15' 2 15
-echo Run commands on all servers, Ctrl + D or Ctrl + C to exit:
+echo Run commands on all servers, Ctrl + D to exit:
+stty intr ^D
 cat >> $TMPFILE
 kill -CONT $EXITPID
 sleep 1

@@ -4,20 +4,20 @@ Manage multiple SSH sessions like a boss.
 
 ## Usage
 
-You can execute the same command simultaneously or execute different commands separately:
+SPSSH can execute the same command simultaneously and execute different commands separately:
 
 ```bash
-./spssh.sh user1@example.com user2@example.com [...]  # basic usage
-./spssh.sh user@{n1,n2}.example.com  # using shell expansion
+./spssh.sh user1@example1.com user2@example2.com [...]  # basic usage
+./spssh.sh user@{n1,n2}.example.com  # use shell expansion
 ./spssh.sh user@n1.example.com user@n2.example.com  # same as above
 ```
 
-## Drawbacks
+## Issues
 
-SPSSH cannot allocate pseudo-terminal. Some commands cannot be run. But there are some workarounds. For example, use `sudo -S` instead of `sudo`.
+You need to [config ssh login without password](https://askubuntu.com/questions/46930/how-can-i-set-up-password-less-ssh-login).
 
 ## Related Tools
 
 [pssh](https://github.com/lilydjwg/pssh): can only execute the same command.
 
-[clusterssh](https://github.com/duncs/clusterssh): may be better than my simple script. But there are some bugs on my computer.
+[clusterssh](https://github.com/duncs/clusterssh): has some bugs on my computer.
