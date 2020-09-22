@@ -35,3 +35,4 @@ cat >> $TMPFILE
 kill -CONT $EXITPID
 sleep 1
 rm -rf $TMPDIR
+stty intr ^C
