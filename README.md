@@ -10,6 +10,7 @@ SPSSH can execute the same command simultaneously and execute different commands
 ./spssh.sh user1@example1.com user2@example2.com [...]  # basic usage
 ./spssh.sh user@{n1,n2}.example.com  # use shell expansion
 ./spssh.sh user@n1.example.com user@n2.example.com  # same as above
+./spssh.sh "user@n1.example.com -p2222" "user@n2.example.com -p2020"  # add ssh args
 ```
 
 ## Issues

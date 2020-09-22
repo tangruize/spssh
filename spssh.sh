@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if test -z "$*"; then
+if test "$#" -eq 0; then
     echo Usage: $0 user1@server1 [user2@server2 ...]
     exit 1
 fi
@@ -17,10 +17,11 @@ TMPFILE=`mktemp`
 bash -c 'kill -STOP $$' &
 EXITPID=$!
 
-for i in $*; do
+while test "$#" -gt 0; do
     TMPFIFO=`mktemp -u`
     mkfifo $TMPFIFO
-    CMD="bash -c 'tail -F $TMPFILE --pid $EXITPID >> $TMPFIFO && pkill -g 0 cat & stty -echo -echoctl raw; ssh -tt $i < $TMPFIFO & cat >> $TMPFIFO'"
+    CMD="bash -c 'tail -F $TMPFILE --pid $EXITPID >> $TMPFIFO && pkill -g 0 cat & stty -echo -echoctl raw; ssh -tt $1 < $TMPFIFO & cat >> $TMPFIFO'"
+    shift
     if test "$XTERM" = "/usr/bin/gnome-terminal"; then
         eval $XTERM -- $CMD &
     else
