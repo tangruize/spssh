@@ -15,7 +15,8 @@ SPSSH can execute the same command simultaneously and execute different commands
 
 ## Issues
 
-You need to [config ssh login without password](https://askubuntu.com/questions/46930/how-can-i-set-up-password-less-ssh-login).
+You can [specify `SSH_ASKPASS` program to provide the passphrase](https://stackoverflow.com/a/15090479/9543140), otherwise ssh will open an X11 window dialog asking for the passphrase.
+It is recommended to [config ssh login without password](https://askubuntu.com/a/46935).
 
 ## Related Tools
 
