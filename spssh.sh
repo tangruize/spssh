@@ -14,9 +14,13 @@ fi
 
 export TMPDIR=`mktemp -d -p /tmp`
 TMPFILE=`mktemp`
+RMTMPDIR="rmdir --ignore-fail-on-non-empty $TMPDIR 2> /dev/null"
 KILLCAT="pkill -g 0 -x cat"
-KILLEXIT="find $TMPDIR -type p -exec false {} + && kill -INT -- -$$"
+KILLEXIT="find $TMPDIR -type p -exec false {} + && ($RMTMPDIR; kill -INT -- -$$)"
 KILLPIPE="find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill"
+
+trap "echo Quitting ...; trap '' INT TERM" INT TERM
+trap "rm -f $TMPFILE; $RMTMPDIR" EXIT
 
 while test "$#" -gt 0; do
     TMPFIFO=`mktemp -u`
@@ -30,11 +34,12 @@ while test "$#" -gt 0; do
     fi
 done
 
-trap "echo Quitting ...; $KILLPIPE; $KILLCAT; trap '' 2 15" 2 15
-echo Run commands on all servers, Ctrl + D to exit:
-stty intr ^D
-cat >> $TMPFILE
-eval $KILLPIPE
-sleep 1
-rm -rf $TMPDIR
-stty intr ^C
+if test -t 0; then
+    echo "Run commands on all servers, Ctrl + D to exit:"
+    stty intr undef
+    bash -c "HISTFILE=$TMPFILE; set -o history; while read -ep '$ '; do echo \"\$REPLY\" >> $TMPFILE; history -n; done; set +o history"
+    eval $KILLPIPE
+    stty intr ^C
+else
+    cat >> $TMPFILE
+fi
