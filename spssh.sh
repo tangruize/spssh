@@ -5,12 +5,18 @@ if test "$#" -eq 0; then
     exit 1
 fi
 
-XTERM=$(realpath `command -v x-terminal-emulator`)
-if test -z "$XTERM"; then
-    echo Error: Cannot find x-terminal-emulator
+terms=(x-terminal-emulator gnome-terminal mate-terminal xfce4-terminal konsole)
+for t in ${terms[*]}; do
+    if [ $(command -v $t) ]; then
+        XTERM=$t
+        break
+    fi
+done
+
+if [ -z "$XTERM" ]; then
+    echo Error: Cannot find a terminal emulator
     exit 1
 fi
-#XTERM="/usr/bin/gnome-terminal"
 
 export TMPDIR=`mktemp -d -p /tmp`
 TMPFILE=`mktemp`
@@ -27,7 +33,7 @@ while test "$#" -gt 0; do
     mkfifo $TMPFIFO
     CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO; $KILLCAT) & (setsid ssh -tt $1 < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'"
     shift
-    if test "$XTERM" = "/usr/bin/gnome-terminal"; then
+    if test "$XTERM" = "gnome-terminal"; then
         eval $XTERM -- $CMD &
     else
         $XTERM -e "$CMD" 2> /dev/null &
