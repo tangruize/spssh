@@ -21,9 +21,9 @@ if test -z "$ALREADY_RUNNING"; then
     test "$(echo "$REPLY")" != "$(echo)" && echo " exit" && exit
 fi
 
-echo -e " stty -echo; echo Receiving '$FILE' ..."
+echo -e " stty -echo intr undef; PSBAK=\$PS1; PS1="
 sleep 0.5
-echo " echo; mkdir -p '$DSTDIR'; bash -c \"stty -echo -icanon; trap 'stty echo icanon' EXIT; awk '/^@$/{exit} 1' | dd bs=64K iflag=fullblock status=progress | base64 -d 2> /dev/null | tar xz -C '$DSTDIR' 2> /dev/null || (echo 1>&2 -e '\nInterrupted by user'; sleep 3; exit 1)\" || exit 1"
+echo " echo Receiving '$FILE' ...; mkdir -p '$DSTDIR'; bash -c \"stty -echo -icanon; trap 'stty echo icanon intr ^C' EXIT; awk '/^@$/{exit} 1' | dd bs=64K iflag=fullblock status=progress | base64 -d 2> /dev/null | tar xz -C '$DSTDIR' 2> /dev/null || (echo 1>&2 -e '\nInterrupted by user'; sleep 3; exit 1)\" || exit 1; PS1=\$PSBAK; unset PSBAK"
 tar cz -C "$SRCDIR" "$FILE" | base64 -w 4095 | dd bs=4K status=progress
 echo @
 

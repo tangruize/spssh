@@ -15,7 +15,9 @@ Basic usage:
 ./spssh_cp.sh FILE/DIR [REMOTE_DIR] | ./spssh.sh user@{n1,n2}.example.com  # send FILE/DIR to REMOTE_DIR
 env DEFAULT_TERM=tmux ./spssh.sh user@{n1,n2}.example.com  # use tmux backend
 ./spssh.sh tmux user@{n1,n2}.example.com  # use tmux backend, same as above
+./spssh.sh gnome-terminal user@{n1,n2}.example.com  # use gnome-terminal backend
 ./spssh.sh tmux  # open an empty tmux session, and add servers later
+./spssh.sh tmux background user@example.com # use tmux backend and run in background
 ```
 
 Advanced usage:
@@ -34,7 +36,7 @@ It is recommended to [config ssh login without password](https://askubuntu.com/a
 
 If you want to type special chars (e.g. TAB and Ctrl+C), first type Ctrl+V and then type TAB (or Ctrl+C).
 
-It is not recommended to use `spssh_cp.sh` for large files because it is very inefficient (tar -> base64). In the copying progress, you cannot enter any key in the remote window (however, you can press any key to interrupt, but you should not press Ctrl+C!!), you cannot send another file and you cannot add another remote server.
+It is not recommended to use `spssh_cp.sh` for large files because it is very inefficient (tar -> base64). In the copying progress, you cannot enter any keys in any windows (Inputs are treated as interruptions), you cannot send another file and you cannot add another remote server.
 Use [parallel-scp](https://github.com/ParallelSSH/parallel-ssh) instead.
 
 ## Related Tools

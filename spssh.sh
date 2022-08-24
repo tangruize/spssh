@@ -34,6 +34,7 @@ function repl {
                     SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
                 else
                     read -p "Enter spssh tmux SESSION: " SESSION
+                    SESSION=${SESSION:+SPSSH${SESSION#SPSSH}}
                 fi
             fi
             if [ -n "$SESSION" ]; then
@@ -74,12 +75,19 @@ function repl {
     fi
 }
 
-if test "$1" = "tmux"; then
+if [[ "$1" =~ ^(gnome|mate|xfce4)-terminal$ ]]; then
+    XTERM=$1
+    shift
+elif test "$1" = "tmux"; then
     XTERM=tmux
     shift
+    if test "$1" = "background"; then
+        BACKGROUND=true
+        shift
+    fi
 elif test "$#" -eq 0; then
-    echo "Usage: $0 [tmux] user1@server1 ['user2@server2 -p2222' ...]"
-    echo "       $0 tmux"
+    echo "Usage: $0 [tmux [background]]/[gnome/mate/xfce4-terminal] user1@server1 ['user2@server2 -p2222' ...]"
+    echo "       $0 tmux [background]"
     echo "       $0 repl [kill-when-exit]"
     exit 1
 elif [ "$1" = "repl" ]; then
@@ -143,7 +151,9 @@ KILLCAT="pkill -g 0 -x cat"
 KILLEXIT="find $TMPDIR -type p -exec false {} + && ($RMTMPDIR; $KILLHOST)"
 
 while test "$#" -gt 0; do
-    TMPFIFO=`mktemp -u`
+    TMPFIFO=`mktemp -u --suffix=.ssh`
+    SEQ=$(find "$TMPDIR" -maxdepth 1 -name '*ssh*' | sed -En 's/.*\.ssh\.([0-9])/\1/p' | sort -n | tail -1)
+    TMPFIFO=${TMPFIFO}.$((SEQ+1))
     mkfifo $TMPFIFO
     CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $1 < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
@@ -151,7 +161,7 @@ while test "$#" -gt 0; do
     fi
     case "$XTERM" in
         tmux)
-            NAME=$(echo "$1" | grep -o '[^ ]*@[^ ]*' | head -1)_$(echo -n "$TMPFIFO" | tail -c2)
+            NAME=$(echo "$1" | grep -o '[^ ]*@[^ ]*' | head -1)_${TMPFIFO##*.}
             tmux new-window -d -t "$SESSION" -n "$NAME" " $CMD"
             tmux send-keys -t "$SESSION:$NAME" " stty cols $WIDTH rows $HEIGHT" C-m C-l
             ;;
@@ -168,7 +178,9 @@ done
 if test -z "$ALREADY_RUNNING"; then
     if test -t 0 -a "$XTERM" = "tmux" -a -z "$CURRENT_IN_TMUX"; then
         tmux select-window -t "$SESSION:0"
-        tmux attach-session -d -t "$SESSION"
+        if test "$BACKGROUND" != "true"; then
+            tmux attach-session -d -t "$SESSION"
+        fi
     else
         repl $KILL_WHEN_EXIT
     fi
