@@ -1,12 +1,18 @@
 #!/bin/bash
 
+# To automatically exit tmux when all servers are closed
+#AUTO_EXIT_TMUX=true
 AUTO_EXIT_TMUX=${AUTO_EXIT_TMUX:-false}
+
+#DEFAULT_TERM=tmux
+#DEFAULT_TERM=gnome-terminal
 DEFAULT_TERM=$DEFAULT_TERM
 
 if test -z "$DISPLAY" -a -z "$DEFAULT_TERM"; then
     DEFAULT_TERM=tmux
 fi
 
+# konsole is buggy (when using vim, tmux ...), consider it as the last one to use
 terms=($DEFAULT_TERM x-terminal-emulator gnome-terminal mate-terminal xfce4-terminal tmux konsole)
 if [ -z "$XTERM" ]; then
     for t in ${terms[*]}; do
@@ -24,7 +30,11 @@ function repl {
         IS_KILL=true
         if [ "$XTERM" = 'tmux' ]; then
             if [ -z "$SESSION" ]; then
-                read -p "Enter spssh tmux SESSION: " SESSION
+                if [ -d "$TMPDIR" ]; then
+                    SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
+                else
+                    read -p "Enter spssh tmux SESSION: " SESSION
+                fi
             fi
             if [ -n "$SESSION" ]; then
                 tmux select-window -t "$SESSION:0"
@@ -52,24 +62,32 @@ function repl {
         else
             echo "Run commands on all servers, Ctrl + D to exit current repl:" 1>&2
         fi
+        trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
         stty intr undef
-        bash -c "HISTFILE=$HISTORY; set -o history; while read -ep '$ '; do echo \"\$REPLY\" | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; done; set +o history; rm -f $HISTORY"
-        test "$IS_KILL" = "true" && find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill
+        bash -c "HISTFILE=$HISTORY; set -o history; while read -ep '$ '; do echo \"\$REPLY\" | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; done; set +o history"
+        if test "$IS_KILL" = "true"; then
+            find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill
+        fi
         stty intr ^C
     else
         cat >> $TMPFILE
     fi
 }
 
-if test "$#" -eq 0; then
-    echo Usage: $0 user1@server1 [user2@server2 ...]
+if test "$1" = "tmux"; then
+    XTERM=tmux
+    shift
+elif test "$#" -eq 0; then
+    echo "Usage: $0 [tmux] user1@server1 ['user2@server2 -p2222' ...]"
+    echo "       $0 tmux"
+    echo "       $0 repl [kill-when-exit]"
     exit 1
 elif [ "$1" = "repl" ]; then
     repl $2
     exit
 fi
 
-if [ -z "$XTERM" ]; then
+if [ -z "$(command -v $XTERM)" ]; then
     echo Error: Cannot find a terminal emulator
     exit 1
 fi
@@ -90,20 +108,28 @@ RMTMPDIR="rmdir --ignore-fail-on-non-empty $TMPDIR 2> /dev/null"
 
 if test -z "$ALREADY_RUNNING"; then
     trap "echo Quitting ...; trap '' INT TERM" INT TERM
-    trap "rm -f $TMPFILE; $RMTMPDIR" EXIT
+    if test "$XTERM" != "tmux"; then
+        trap "rm -f $TMPFILE 2>/dev/null; $RMTMPDIR" EXIT
+    fi
 fi
 
 if [ "$XTERM" = "tmux" ]; then
     if test -z "$ALREADY_RUNNING"; then
         if test -z "$SESSION"; then
-            SESSION=SPSSH$((RANDOM%100))
+            SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
         fi
         export SESSION
         echo "SPSSH: SESSION=$SESSION" 1>&2
         export WIDTH=$(tput cols)
         export HEIGHT=$(($(tput lines)-1))
         set -e
-        tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT"  " $0 repl $KILL_WHEN_EXIT"
+        if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT"  " $0 repl $KILL_WHEN_EXIT"
+        elif test -n "$TMUX_PANE"; then
+            CURRENT_IN_TMUX=true
+        else
+            tmux split-window -t "$SESSION:0" " $0 repl $KILL_WHEN_EXIT"
+        fi
         set +e
     fi
     if test "$AUTO_EXIT_TMUX" != "false"; then
@@ -125,9 +151,9 @@ while test "$#" -gt 0; do
     fi
     case "$XTERM" in
         tmux)
-            NAME=$(echo "$1" | grep -o '[^ ]*@[^ ]*' | head -1)_$((RANDOM%100))
+            NAME=$(echo "$1" | grep -o '[^ ]*@[^ ]*' | head -1)_$(echo -n "$TMPFIFO" | tail -c2)
             tmux new-window -d -t "$SESSION" -n "$NAME" " $CMD"
-            tmux send-keys -t "$SESSION:$NAME" "stty cols $WIDTH rows $HEIGHT" C-m C-l
+            tmux send-keys -t "$SESSION:$NAME" " stty cols $WIDTH rows $HEIGHT" C-m C-l
             ;;
         gnome-terminal)
             eval $XTERM -- $CMD &
@@ -140,7 +166,7 @@ while test "$#" -gt 0; do
 done
 
 if test -z "$ALREADY_RUNNING"; then
-    if test -t 0 && [ "$XTERM" = "tmux" ]; then
+    if test -t 0 -a "$XTERM" = "tmux" -a -z "$CURRENT_IN_TMUX"; then
         tmux select-window -t "$SESSION:0"
         tmux attach-session -d -t "$SESSION"
     else
