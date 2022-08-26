@@ -177,16 +177,19 @@ function set_ssh_cmd() {
         SSH_NAME_PREFIX=SSH$(echo -n $SESSION | tail -c 2)
         SSH_NAME=$SSH_NAME_PREFIX$(echo -n $(mktemp -u) | tail -c 2)
         TMUX_CLIENT_ENV="-e SSH_NO=$SSH_NO -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\" -e DISPLAY=\\\"\\\$DISPLAY\\\""
-        SSH_START_CMD_=" tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null || (tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME); exit"
+        SSH_START_CMD_=" if ! tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME; fi; exit"
     fi
 
-    if [ -n "$SSH_START_CMD_" -a "$XTERM" = "tmux" ]; then
-        TMUX_SEND_KEYS="${SSH_START_CMD_//\\/}"
+    if [ "$XTERM" = "tmux" ]; then
+        if [ -n "$SSH_START_CMD_" ]; then
+            TMUX_SEND_KEYS="${SSH_START_CMD_//\\/}"
+        else
+            TMUX_SEND_KEYS=" export SSH_NO=$SSH_NO"
+        fi
         unset SSH_START_CMD_
+    else
+        SSH_START_CMD="${SSH_START_CMD_:-export SSH_NO=$SSH_NO; \\\$SHELL -i}"
     fi
-
-    SSH_START_CMD="${SSH_START_CMD_:+\"${SSH_START_CMD_}\"}"
-    SSH_START_CMD="${SSH_START_CMD:-\"export SSH_NO=$SSH_NO; \\\$SHELL -i\"}"
 }
 
 KILLCAT="pkill -g 0 -x cat"
@@ -201,7 +204,7 @@ while test "$#" -gt 0; do
     TMPFIFO=${TMPFIFO}.$((SEQ))
     mkfifo $TMPFIFO
     set_ssh_cmd $SEQ
-    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $1 $SSH_START_CMD < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
+    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"
     fi
@@ -210,7 +213,7 @@ while test "$#" -gt 0; do
         tmux)
             tmux new-window -d -t "$SESSION" -n "$NAME" " $CMD"
             tmux send-keys -t "$SESSION:$NAME" " stty cols $WIDTH rows $HEIGHT" C-m C-l
-            test -n "$TMUX_SEND_KEYS" && tmux send-keys -t "$SESSION:$NAME" "$TMUX_SEND_KEYS" C-m
+            test -n "$TMUX_SEND_KEYS" && tmux send-keys -t "$SESSION:$NAME" "$TMUX_SEND_KEYS" C-m C-l
             ;;
         gnome-terminal)
             eval $XTERM --title="$NAME" -- $CMD & sleep 0.1
