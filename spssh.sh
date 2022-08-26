@@ -47,6 +47,7 @@ function repl {
             IS_KILL=true
         fi
         TMPFILE=$TMPDIR/host
+        SEQFILE=$TMPDIR/seq
         NO_PIPE_ARG='> /dev/null'
     fi
     if [ -n "$TMPFILE" -a -z "$TMPDIR" ]; then
@@ -63,7 +64,7 @@ function repl {
         else
             echo ", Ctrl + D to exit current repl, Ctrl + \\ to switch line/char mode:" 1>&2
         fi
-        trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
+        trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
         stty intr undef
         bash -c "m=l; trap 'echo; echo -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo char mode; else m=l; s=1; echo line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -N 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -ep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
         if test "$IS_KILL" = "true"; then
@@ -132,13 +133,14 @@ else
     set +e
 fi
 TMPFILE=$TMPDIR/host
-touch "$TMPFILE"
+SEQFILE=$TMPDIR/seq
+touch "$TMPFILE" "$SEQFILE"
 RMTMPDIR="rmdir --ignore-fail-on-non-empty $TMPDIR 2> /dev/null"
 
 if test -z "$ALREADY_RUNNING"; then
     trap "echo Quitting ...; trap '' INT TERM" INT TERM
     if test "$XTERM" != "tmux"; then
-        trap "rm -f $TMPFILE 2>/dev/null; $RMTMPDIR" EXIT
+        trap "rm -f $TMPFILE $SEQFILE 2>/dev/null; $RMTMPDIR" EXIT
     fi
 fi
 
@@ -169,18 +171,22 @@ else
 fi
 
 function set_ssh_cmd() {
+    SSH_START_CMD_=
+    SSH_NO=$1
     if [ "$CLIENT_TMUX" = true ]; then
         SSH_NAME_PREFIX=SSH$(echo -n $SESSION | tail -c 2)
         SSH_NAME=$SSH_NAME_PREFIX$(echo -n $(mktemp -u) | tail -c 2)
-        SSH_START_CMD=" tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX 2>/dev/null || (tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME); exit"
+        TMUX_CLIENT_ENV="-e SSH_NO=$SSH_NO -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\" -e DISPLAY=\\\"\\\$DISPLAY\\\""
+        SSH_START_CMD_=" tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null || (tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME); exit"
     fi
 
-    if [ -n "$SSH_START_CMD" -a "$XTERM" = "tmux" ]; then
-        TMUX_SEND_KEYS="$SSH_START_CMD"
-        unset SSH_START_CMD
+    if [ -n "$SSH_START_CMD_" -a "$XTERM" = "tmux" ]; then
+        TMUX_SEND_KEYS="${SSH_START_CMD_//\\/}"
+        unset SSH_START_CMD_
     fi
 
-    SSH_START_CMD="${SSH_START_CMD:+\"${SSH_START_CMD}\"}"
+    SSH_START_CMD="${SSH_START_CMD_:+\"${SSH_START_CMD_}\"}"
+    SSH_START_CMD="${SSH_START_CMD:-\"export SSH_NO=$SSH_NO; \\\$SHELL -i\"}"
 }
 
 KILLCAT="pkill -g 0 -x cat"
@@ -188,11 +194,13 @@ KILLEXIT="find $TMPDIR -type p -exec false {} + && ($RMTMPDIR; $KILLHOST)"
 
 while test "$#" -gt 0; do
     TMPFIFO=`mktemp -u --suffix=.ssh`
-    SEQ=$(find "$TMPDIR" -maxdepth 1 -name '*ssh*' | sed -En 's/.*\.ssh\.([0-9])/\1/p' | sort -n | tail -1)
-    #SEQ=${SEQ:--1}
-    TMPFIFO=${TMPFIFO}.$((SEQ+1))
+    #SEQ=$(find "$TMPDIR" -maxdepth 1 -name '*ssh*' | sed -En 's/.*\.ssh\.([0-9])/\1/p' | sort -n | tail -1)
+    SEQ=$(cat $SEQFILE)
+    SEQ=$((SEQ+1))
+    echo $SEQ > "$SEQFILE"
+    TMPFIFO=${TMPFIFO}.$((SEQ))
     mkfifo $TMPFIFO
-    set_ssh_cmd
+    set_ssh_cmd $SEQ
     CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $1 $SSH_START_CMD < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"

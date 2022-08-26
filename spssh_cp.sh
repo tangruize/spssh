@@ -3,7 +3,7 @@
 # zstd is better than gzip, you should install it on both host and clients before use
 #COMPRESS_PROGRAM=zstd
 COMPRESS_PROGRAM=${COMPRESS_PROGRAM:-gzip}
-#FIND_ARGS='-maxdepth 1 -name *.sh'
+#FIND_ARGS="-maxdepth 1 -name \*.sh"
 FIND_ARGS=$FIND_ARGS
 #START_NO_ASK=true
 START_NO_ASK=${START_NO_ASK:-false}
@@ -39,7 +39,7 @@ fi
 echo -e " stty -echo; PSBAK=\$PS1; unset PS1; sleep 0.5"
 sleep 0.5
 echo " echo Receiving '$FILE ...'; mkdir -p '$DSTDIR'; bash -c \"stty -echo -icanon intr undef; stdbuf -i 4K sed '/^ /q' | dd bs=64K iflag=fullblock status=progress | base64 -d 2> /dev/null | tar xv -I $COMPRESS_PROGRAM -C '$DSTDIR' 2> /dev/null || (echo 1>&2 -e '\nInterrupted by user'; sleep 3; exit 1)\" || exit 1"
-(cd "$SRCDIR"; find "$FILE" $FIND_ARGS -print0 | tar cv -I $COMPRESS_PROGRAM --null -T - | base64 -w 4095 | dd bs=4K status=progress; awk 'BEGIN{ for (b=0; b<2; b++) { for (c=0; c<4095; c++) { printf " " } printf "\n" } }' | dd bs=4K 2>/dev/null; echo " stty echo icanon intr ^C; PS1=\$PSBAK; unset PSBAK")
+(cd "$SRCDIR"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv -I $COMPRESS_PROGRAM --null -T - | base64 -w 4095 | dd bs=4K status=progress; awk 'BEGIN{ for (b=0; b<2; b++) { for (c=0; c<4095; c++) { printf " " } printf "\n" } }' | dd bs=4K 2>/dev/null; echo " stty echo icanon intr ^C; PS1=\$PSBAK; unset PSBAK")
 
 if test -z "$ALREADY_RUNNING"; then
     if test -t 0; then
