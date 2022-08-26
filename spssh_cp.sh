@@ -13,6 +13,7 @@ EXIT_NO_ASK=${EXIT_NO_ASK:-false}
 if test "$#" -eq 0; then
     echo 1>&2 "Usage: $0 FILE/DIR [REMOTE_DIR] | `dirname $0`/spssh.sh user1@server1 [user2@server2 ...]"
     echo 1>&2 "       $0 FILE/DIR [REMOTE_DIR]  # without piping in tmux session"
+    echo 1>&2 "       env FIND_ARGS='find args' $0 FILE/DIR [REMOTE_DIR]  # use find args to filter files"
     test -t 1 || (read -N 1 -sp "Press any key to exit: " && echo " exit")
     exit
 fi

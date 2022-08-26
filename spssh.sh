@@ -108,7 +108,7 @@ while test "$#" -gt 0; do
 done
 
 if test "$#" -eq 0 && (test -z "$HAS_ARG" || test "$XTERM" != "tmux"); then
-    echo "Usage: $0 [tmux/tmux-detach [auto-exit-tmux]]/[gnome/mate/xfce4-terminal] [client-tmux] user1@server1 ['user2@server2 [-p2222 SSH_ARGS]' ...]"
+    echo "Usage: $0 [tmux/tmux-detach [auto-exit-tmux]]/[gnome/mate/xfce4-terminal] [client-tmux] user1@server1 ['user2@server2 [-p2222 -X SSH_ARGS ...]' ...]"
     echo "       $0 tmux/tmux-detach [auto-exit-tmux]"
     echo "       $0 repl [$KILL_WHEN_EXIT]"
     exit 1
