@@ -30,19 +30,17 @@ KILL_WHEN_EXIT="kill-when-exit"
 
 function repl {
     if [ "$1" = "pipe" ]; then
-        IS_KILL=true
         if [ -z "$SESSION" ]; then
             if [ -d "$TMPDIR" ]; then
                 SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
             else
-                read -p "Enter last two chars of tmux SESSION (press ENTER if backend is not tmux): " SESSION
+                test -t 0 && read -p "Enter last two chars of tmux SESSION (press ENTER if backend is not tmux): " SESSION
                 SESSION=${SESSION:+SPSSH${SESSION#SPSSH}}
             fi
         fi
         if [ -n "$SESSION" ]; then
             tmux select-window -t "$SESSION:0" 1>&2
-            tmux attach-session -d -t "$SESSION" 1>&2
-            exit
+            tmux attach-session -d -t "$SESSION" 1>&2 && exit
         fi
     else
         if [ "$1" = "$KILL_WHEN_EXIT" ]; then
@@ -57,10 +55,13 @@ function repl {
     fi
     if test -t 0; then
         HISTORY=`mktemp --suffix=.history`
+        echo -n "Run commands on all servers" 1>&2
         if test "$IS_KILL" = true; then
-            echo "Run commands on all servers, Ctrl + D to exit all servers, Ctrl + \\ to switch line/char mode:" 1>&2
+            echo ", Ctrl + D to exit all servers, Ctrl + \\ to switch line/char mode:" 1>&2
+        elif test "$1" = "pipe"; then
+            echo ", Ctrl + D to exit all servers:" 1>&2
         else
-            echo "Run commands on all servers, Ctrl + D to exit current repl, Ctrl + \\ to switch line/char mode:" 1>&2
+            echo ", Ctrl + D to exit current repl, Ctrl + \\ to switch line/char mode:" 1>&2
         fi
         trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
         stty intr undef
@@ -70,7 +71,14 @@ function repl {
         fi
         stty intr ^C
     else
-        cat >> $TMPFILE
+        if test "$1" =  "pipe"; then
+            cat
+        else
+            cat >> $TMPFILE
+        fi
+    fi
+    if [ "$1" = "pipe" ]; then
+        exit 1
     fi
 }
 
