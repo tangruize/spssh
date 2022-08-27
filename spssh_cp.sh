@@ -42,9 +42,9 @@ sleep 0.5
 echo " echo Receiving '$FILE ...'; mkdir -p '$DSTDIR'; bash -c \"stty -echo -icanon intr undef; stdbuf -i 4K sed '/^ /q' | dd bs=64K iflag=fullblock status=progress | base64 -d 2> /dev/null | tar xv -I $COMPRESS_PROGRAM -C '$DSTDIR' 2> /dev/null || (echo 1>&2 -e '\nInterrupted by user'; sleep 3; exit 1)\" || exit 1"
 (cd "$SRCDIR"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv -I $COMPRESS_PROGRAM --null -T - | base64 -w 4095 | dd bs=4K status=progress; awk 'BEGIN{ for (b=0; b<2; b++) { for (c=0; c<4095; c++) { printf " " } printf "\n" } }' | dd bs=4K 2>/dev/null; echo " stty echo icanon intr ^C; PS1=\$PSBAK; unset PSBAK")
 
-if test -z "$ALREADY_RUNNING"; then
+if test -z "$ALREADY_RUNNING" -o ! -t 0; then
     if test -t 0; then
-        if test "$EXIT_NO_ASK" != "true"; then
+        if test "$EXIT_NO_ASK" != "true" -a -z "$TMPDIR"; then
             read -N 1 -p "Exit host REPL and all clients? [y/N] "
         else
             REPLY=y
@@ -59,6 +59,6 @@ if test -z "$ALREADY_RUNNING"; then
     fi
     echo 1>&2
     if test "$REPLY" = "y" -o "$EXIT_STATUS" != 0; then
-        test -t 0 && echo -e "\n exit"
+        test -t 0 -a -z "$TMPDIR" && echo -e "\n exit"
     fi
 fi

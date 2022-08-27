@@ -38,7 +38,7 @@ function repl {
                 SESSION=${SESSION:+SPSSH${SESSION#SPSSH}}
             fi
         fi
-        if [ -n "$SESSION" ]; then
+        if [ -n "$SESSION" -a -t 0 ]; then
             tmux select-window -t "$SESSION:0" 1>&2
             tmux attach-session -d -t "$SESSION" 1>&2 && exit
         fi
@@ -234,4 +234,6 @@ if test -z "$ALREADY_RUNNING"; then
     else
         repl $KILL_WHEN_EXIT
     fi
+elif ! test -t 0; then
+    repl
 fi
