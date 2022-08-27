@@ -83,38 +83,56 @@ function repl {
     fi
 }
 
+function usage() {
+    echo "Usage: spssh.sh [--tmux/--tmux-detach [auto-exit]]/[--gnome/mate/xfce4-terminal]"
+    echo "                [--client-tmux] user@server1 ['user2@server2 [-p2222 -X ..]' ..]"
+    echo "Usage: spssh.sh --tmux/--tmux-detach [auto-exit]"
+    echo "Usage: spssh.sh --repl [$KILL_WHEN_EXIT]"
+}
+
 while test "$#" -gt 0; do
-    if [[ "$1" =~ ^(gnome|mate|xfce4)-terminal$ ]] || [ "$1" = "tmux" ]; then
-        export XTERM=$1
-    else
-        case "$1" in
-            background|tmux-detach)
-                XTERM=tmux
-                BACKGROUND=true
-                ;;
-            client-tmux)
-                CLIENT_TMUX=true
-                ;;
-            auto-exit-tmux)
+    case "$1" in
+        -g|--gnome-terminal)
+            export XTERM=gnome-terminal
+            ;;
+        -m|--mate-terminal)
+            export XTERM=mate-terminal
+            ;;
+        -x|--xfce4-terminal)
+            export XTERM=xfce4-terminal
+            ;;
+        -d|--tmux-detach|-t|--tmux)
+            export XTERM=tmux
+            if test "$1" = '--tmux-detach' -o "$1" = "-d"; then
+                TMUX_DETACH=true
+            fi
+            if test "$2" = 'auto-exit'; then
                 AUTO_EXIT_TMUX=true
-                ;;
-            *)
-                break
-                ;;
-        esac
-    fi
+                shift
+            fi
+            ;;
+        -c|--client-tmux)
+            CLIENT_TMUX=true
+            ;;
+        -r|--repl)
+            repl $2
+            exit
+            ;;
+        -*)
+            usage
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
     HAS_ARG=true
     shift
 done
 
 if test "$#" -eq 0 && (test -z "$HAS_ARG" || test "$XTERM" != "tmux"); then
-    echo "Usage: $0 [tmux/tmux-detach [auto-exit-tmux]]/[gnome/mate/xfce4-terminal] [client-tmux] user1@server1 ['user2@server2 [-p2222 -X SSH_ARGS ...]' ...]"
-    echo "       $0 tmux/tmux-detach [auto-exit-tmux]"
-    echo "       $0 repl [$KILL_WHEN_EXIT]"
+    usage
     exit 1
-elif [ "$1" = "repl" ]; then
-    repl $2
-    exit
 fi
 
 if [ -z "$(command -v $XTERM)" ]; then
@@ -124,7 +142,7 @@ fi
 
 if test -z "$TMPDIR"; then
     export TMPDIR=`mktemp -d -p /tmp --suffix=.spssh`
-    echo "SPSSH: TMPDIR=$TMPDIR" 1>&2
+    echo "[SPSSH] TMPDIR=$TMPDIR" 1>&2
 elif test -f "$TMPDIR/host"; then
     ALREADY_RUNNING=true
 else
@@ -150,21 +168,21 @@ fi
 
 if [ "$XTERM" = "tmux" ]; then
     if test -z "$ALREADY_RUNNING"; then
-        echo "SPSSH: SESSION=$SESSION" 1>&2
+        echo "[SPSSH] SESSION=$SESSION" 1>&2
         export WIDTH=$(tput cols)
         export HEIGHT=$(($(tput lines)-1))
         set -e
         if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "AUTO_EXIT_TMUX=$AUTO_EXIT_TMUX" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "$0 repl $KILL_WHEN_EXIT"
+            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "AUTO_EXIT_TMUX=$AUTO_EXIT_TMUX" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "$0 --repl $KILL_WHEN_EXIT"
         elif test -n "$TMUX_PANE"; then
             CURRENT_IN_TMUX=true
         else
-            tmux split-window -t "$SESSION:0" " $0 repl $KILL_WHEN_EXIT"
+            tmux split-window -t "$SESSION:0" " $0 --repl $KILL_WHEN_EXIT"
         fi
         set +e
     fi
     if test "$AUTO_EXIT_TMUX" != "false"; then
-        KILLHOST="tmux kill-window -t $SESSION:0"
+        KILLHOST="tmux kill-pane -t $SESSION:0.0"
     fi
 else
     KILLHOST="kill -INT -- -$$"
@@ -228,7 +246,7 @@ done
 if test -z "$ALREADY_RUNNING"; then
     if test -t 0 -a "$XTERM" = "tmux" -a -z "$CURRENT_IN_TMUX"; then
         tmux select-window -t "$SESSION:0"
-        if test "$BACKGROUND" != "true"; then
+        if test "$TMUX_DETACH" != "true"; then
             tmux attach-session -d -t "$SESSION"
         fi
     else
