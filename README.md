@@ -13,20 +13,21 @@ Additionally, there is a simple copy script to copy small files (less than 1GB) 
 
 - Host:
   - one of tmux/gnome-terminal/mate-terminal/xfce4-terminal
-  - bash, coreutils, util-linux, procps, findutils, openssh-client
-  - tar, gzip, zstd, awk (optinoal, for spssh\_cp.sh)
+  - bash, coreutils, util-linux, procps, findutils, openssh-client, lsof
+  - tar, gzip/zstd, awk (optinoal, for spssh\_cp.sh)
 - Clients:
   - tmux (optional, for `--client-tmux` argument)
-  - tar, gzip, zstd, sed (optional, for spssh\_cp.sh)
+  - bash, tar, gzip/zstd, sed (optional, for spssh\_cp.sh)
 
 ### Basic Usage
 
 ```txt
 $ ./spssh.sh
-Usage: spssh.sh [--tmux/--tmux-detach [auto-exit]]/[--gnome/mate/xfce4-terminal]
-                [--client-tmux] user@server1 ['user2@server2 [-p2222 -X ..]' ..]
-Usage: spssh.sh --tmux/--tmux-detach [auto-exit]
-Usage: spssh.sh --repl [kill-when-exit]
+Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]
+                [--gnome/mate/xfce4-terminal] [--client-tmux]
+                user1@server1 ['user2@server2 [-p2222 -X SSH_ARSG ..]' ..]
+Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']
+Usage: spssh.sh --repl [--kill-when-exit]
 
 $ spssh_cp.sh
 Usage: spssh_cp.sh [--safe-mode] [--begin-no-ask] [--exit-no-ask]
@@ -41,16 +42,18 @@ Usage: spssh_cp.sh [options ..] FILE/DIR [REMOTE_DIR]  # in tmux session
 ```bash
 ./spssh.sh user1@example1.com user2@example2.com [...]
 ./spssh.sh user@{n1,n2}.example.com  # use shell expansion, same as user@n1.example.com user@n2.example.com
-./spssh.sh "user@n1.example.com -p2222" "user@n2.example.com -p2020 -X"    # add ssh args
-./spssh.sh --tmux user@{n1,n2}.example.com  # use tmux backend
+./spssh.sh "user@n1.example.com -p2222" "user@n2.example.com -p2020 -X"  # add ssh args
 ./spssh.sh --gnome-terminal user@{n1,n2}.example.com  # use gnome-terminal backend
+./spssh.sh --tmux user@{n1,n2}.example.com  # use tmux backend
 ./spssh.sh --tmux  # open an empty tmux session to add servers later
-./spssh.sh --tmux-detach user@example.com  # use tmux backend and run in background
+./spssh.sh --tmux --detach user@{n1,n2}.example.com  # use tmux backend and run in background
+./spssh.sh --tmux --auto-exit user@{n1,n2}.example.com  # auto exit tmux when all clients are disconnected
+./spssh.sh --tmux --run-host-cmd "nc -l 0.0.0.0 9999" user@{n1,n2}.example.com  # run a host cmd additionally
 ./spssh.sh --client-tmux user@{n1,n2}.example.com  # run tmux in client
-./spssh.sh --tmux auto-exit user@{n1,n2}.example.com  # auto exit tmux when all clients are disconnected
 ./spssh_cp.sh FILE/DIR [REMOTE_DIR] | ./spssh.sh user@{n1,n2}.example.com  # send FILE/DIR to REMOTE_DIR
 ./spssh_cp.sh FILE/DIR [REMOTE_DIR]  # without piping in tmux backend
 ./spssh_cp.sh --find-args '-maxdepth 1 -name \*.sh ..' FILE/DIR [REMOTE_DIR]  # filter file to send
+./spssh_cp.sh --safe-mode FILE/DIR [REMOTE_DIR]  # very slow client unbuffered receiving (<500kB/s)
 ```
 
 ### Advanced Usage
@@ -63,13 +66,13 @@ to achieve the same effect.
 
 If using GUI terminal backends, the host REPL will be closed if all servers are closed.
 But in tmux, the host window will not be closed by default.
-You can set the argument `auto-exit` after `--tmux/--tmux-detach` to exit the tmux session (actually, panel 0.0)
+You can set the argument `--auto-exit` after `--tmux` to exit the tmux session (actually, panel 0.0)
 when all are disconnected.
 
-Set the argument `--client-tmux` to open tmux in the client.
+Set the argument `--client-tmux` to open tmux in the clients.
 If same clients are connected multiple times, they share the same tmux group
 (thus, run `tmux kill-session && exit` to close the window).
-If the host REPL exits with Ctrl+D, it kills client SSH connections, but client tmux sessions are still running.
+If the host REPL exits with Ctrl+D, it kills client SSH connections, but clients tmux sessions are still running.
 
 In the host REPL (not piped), press Ctrl + \ (backslash) to toggle line mode and char mode.
 In char mode, characters are sent to clients immediately, so that vim can function properly.
@@ -90,9 +93,9 @@ It is recommended to [config ssh login without password](https://askubuntu.com/a
 If you want to type special chars (e.g. TAB and Ctrl+C) in line mode, first type Ctrl+V and then type TAB (or Ctrl+C).
 
 It is not recommended to use `spssh_cp.sh` for very large files because it is very inefficient
-(HOST: tar -> gzip/zstd -> base64; CLIENTS: un-base64 -> un-gzip/zstd -> un-tar; zstd is better).
+(HOST: tar -> gzip/zstd -> base64; CLIENTS: sed -> un-base64 -> un-gzip/zstd -> un-tar; zstd is better).
 In the copying progress, you cannot enter any keys in any windows (un-tar will fail and it is treated as interruptions),
-you cannot send another file and you cannot add another remote server.
+you cannot send other files and you cannot add other remote servers.
 
 In some circumstances, the `TMPDIR` is not deleted after abnormal exit. You can delete `/tmp/tmp.*.spssh` manually.
 It is not necessary to do it because they will be deleted after reboot.

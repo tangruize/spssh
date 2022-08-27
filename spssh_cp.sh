@@ -94,7 +94,7 @@ fi
 
 echo -e " stty -echo; PSBAK=\$PS1; unset PS1; sleep 0.5"
 sleep 0.5
-echo " echo Receiving '$FILE ...'; mkdir -p '$DSTDIR'; bash -c \"stty -echo -icanon intr undef; $RECEIVE_CMD | dd bs=64K iflag=fullblock status=progress | base64 -d 2> /dev/null | tar xv -I $COMPRESS_PROGRAM -C '$DSTDIR' 2> /dev/null || (echo 1>&2 -e '\nInterrupted by user'; sleep 3; exit 1)\" || exit 1"
+echo " echo Receiving '\"$FILE\" ...'; mkdir -p '$DSTDIR'; bash -c \"stty -echo -icanon intr undef; $RECEIVE_CMD | dd bs=64K iflag=fullblock status=progress | base64 -d 2> /dev/null | tar xv -I $COMPRESS_PROGRAM -C '$DSTDIR' 2> /dev/null || (echo 1>&2 -e '\nInterrupted by user'; sleep 3; exit 1)\" || exit 1"
 (cd "$SRCDIR"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv -I $COMPRESS_PROGRAM --null -T - | base64 -w 4095 | dd bs=4K status=progress; eval "$SENTINEL_CMD"; echo " stty echo icanon intr ^C; PS1=\$PSBAK; unset PSBAK")
 
 if test -z "$ALREADY_RUNNING" -o ! -t 0; then
@@ -109,7 +109,7 @@ if test -z "$ALREADY_RUNNING" -o ! -t 0; then
     fi
     REPLY=${REPLY,,}
     if test "$REPLY" != "y"; then
-        $(dirname "$0")/spssh.sh --repl pipe
+        $(dirname "$0")/spssh.sh --repl --pipe
         EXIT_STATUS=$?
     fi
     echo 1>&2

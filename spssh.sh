@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # To automatically exit tmux when all servers are closed
-#AUTO_EXIT_TMUX=true
-AUTO_EXIT_TMUX=${AUTO_EXIT_TMUX:-false}
+#TMUX_AUTO_EXIT=true
+TMUX_AUTO_EXIT=${TMUX_AUTO_EXIT:-false}
 
 #DEFAULT_TERM=tmux
 #DEFAULT_TERM=gnome-terminal
@@ -26,10 +26,11 @@ if [ -z "$XTERM" ]; then
     done
 fi
 
-KILL_WHEN_EXIT="kill-when-exit"
+REPL_KILL_WHEN_EXIT="--kill-when-exit"
+REPL_PIPE="--pipe"
 
 function repl {
-    if [ "$1" = "pipe" ]; then
+    if [ "$1" = "$REPL_PIPE" ]; then
         if [ -z "$SESSION" ]; then
             if [ -d "$TMPDIR" ]; then
                 SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
@@ -43,7 +44,7 @@ function repl {
             tmux attach-session -d -t "$SESSION" 1>&2 && exit
         fi
     else
-        if [ "$1" = "$KILL_WHEN_EXIT" ]; then
+        if [ "$1" = "$REPL_KILL_WHEN_EXIT" ]; then
             IS_KILL=true
         fi
         TMPFILE=$TMPDIR/host
@@ -59,7 +60,7 @@ function repl {
         echo -n "Run commands on all servers" 1>&2
         if test "$IS_KILL" = true; then
             echo ", Ctrl + D to exit all servers, Ctrl + \\ to switch line/char mode:" 1>&2
-        elif test "$1" = "pipe"; then
+        elif test "$1" = "$REPL_PIPE"; then
             echo ", Ctrl + D to exit all servers:" 1>&2
         else
             echo ", Ctrl + D to exit current repl, Ctrl + \\ to switch line/char mode:" 1>&2
@@ -72,22 +73,23 @@ function repl {
         fi
         stty intr ^C
     else
-        if test "$1" =  "pipe"; then
+        if test "$1" = "$REPL_PIPE"; then
             cat
         else
-            cat >> $TMPFILE
+            cat >> "$TMPFILE"
         fi
     fi
-    if [ "$1" = "pipe" ]; then
+    if [ "$1" = "$REPL_PIPE" ]; then
         exit 1
     fi
 }
 
 function usage() {
-    echo "Usage: spssh.sh [--tmux/--tmux-detach [auto-exit]]/[--gnome/mate/xfce4-terminal]"
-    echo "                [--client-tmux] user@server1 ['user2@server2 [-p2222 -X ..]' ..]"
-    echo "Usage: spssh.sh --tmux/--tmux-detach [auto-exit]"
-    echo "Usage: spssh.sh --repl [$KILL_WHEN_EXIT]"
+    echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]"
+    echo "                [--gnome/mate/xfce4-terminal] [--client-tmux]"
+    echo "                user1@server1 ['user2@server2 [-p2222 -X SSH_ARSG ..]' ..]"
+    echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']"
+    echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]"
 }
 
 while test "$#" -gt 0; do
@@ -101,20 +103,38 @@ while test "$#" -gt 0; do
         -x|--xfce4-terminal)
             export XTERM=xfce4-terminal
             ;;
-        -d|--tmux-detach|-t|--tmux)
+        -t|--tmux)
             export XTERM=tmux
-            if test "$1" = '--tmux-detach' -o "$1" = "-d"; then
-                TMUX_DETACH=true
-            fi
-            if test "$2" = 'auto-exit'; then
-                AUTO_EXIT_TMUX=true
-                shift
-            fi
+            while test -n "$2"; do
+                case "$2" in
+                    -D|--detach)
+                        TMUX_DETACH=true
+                        shift
+                        ;;
+                    -E|--auto-exit)
+                        TMUX_AUTO_EXIT=true
+                        shift
+                        ;;
+                    -R|--run-host-cmd)
+                        TMUX_RUN_HOST_CMD="$3"
+                        shift 2
+                        ;;
+                    *)
+                        break
+                        ;;
+                esac
+            done
             ;;
         -c|--client-tmux)
             CLIENT_TMUX=true
             ;;
         -r|--repl)
+            if test "$2"; then
+                if test "$2" != "$REPL_KILL_WHEN_EXIT" -a "$2" != "$REPL_PIPE"; then
+                    usage
+                    exit 2
+                fi
+            fi
             repl $2
             exit
             ;;
@@ -140,16 +160,17 @@ if [ -z "$(command -v $XTERM)" ]; then
     exit 1
 fi
 
+set -e
 if test -z "$TMPDIR"; then
-    export TMPDIR=`mktemp -d -p /tmp --suffix=.spssh`
+    TMPDIR=`mktemp -d -p /tmp --suffix=.spssh`
+    export TMPDIR
     echo "[SPSSH] TMPDIR=$TMPDIR" 1>&2
 elif test -f "$TMPDIR/host"; then
     ALREADY_RUNNING=true
 else
-    set -e
     mkdir -p "$TMPDIR"
-    set +e
 fi
+set +e
 TMPFILE=$TMPDIR/host
 SEQFILE=$TMPDIR/seq
 touch "$TMPFILE" "$SEQFILE"
@@ -173,16 +194,20 @@ if [ "$XTERM" = "tmux" ]; then
         export HEIGHT=$(($(tput lines)-1))
         set -e
         if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "AUTO_EXIT_TMUX=$AUTO_EXIT_TMUX" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "$0 --repl $KILL_WHEN_EXIT"
+            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "$0 --repl $REPL_KILL_WHEN_EXIT"
         elif test -n "$TMUX_PANE"; then
             CURRENT_IN_TMUX=true
         else
-            tmux split-window -t "$SESSION:0" " $0 --repl $KILL_WHEN_EXIT"
+            tmux split-window -t "$SESSION:0" " $0 --repl $REPL_KILL_WHEN_EXIT"
         fi
         set +e
     fi
-    if test "$AUTO_EXIT_TMUX" != "false"; then
+    if test "$TMUX_AUTO_EXIT" != "false"; then
         KILLHOST="tmux kill-pane -t $SESSION:0.0"
+    fi
+    if test "$TMUX_RUN_HOST_CMD"; then
+        tmux split-window -t "$SESSION:0"
+        tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-m
     fi
 else
     KILLHOST="kill -INT -- -$$"
@@ -215,7 +240,6 @@ KILLEXIT="find $TMPDIR -type p -exec false {} + && ($RMTMPDIR; $KILLHOST)"
 
 while test "$#" -gt 0; do
     TMPFIFO=`mktemp -u --suffix=.ssh`
-    #SEQ=$(find "$TMPDIR" -maxdepth 1 -name '*ssh*' | sed -En 's/.*\.ssh\.([0-9])/\1/p' | sort -n | tail -1)
     SEQ=$(cat $SEQFILE)
     SEQ=$((SEQ+1))
     echo $SEQ > "$SEQFILE"
@@ -245,12 +269,12 @@ done
 
 if test -z "$ALREADY_RUNNING"; then
     if test -t 0 -a "$XTERM" = "tmux" -a -z "$CURRENT_IN_TMUX"; then
-        tmux select-window -t "$SESSION:0"
+        tmux select-pane -t "$SESSION:0.0"
         if test "$TMUX_DETACH" != "true"; then
             tmux attach-session -d -t "$SESSION"
         fi
     else
-        repl $KILL_WHEN_EXIT
+        repl $REPL_KILL_WHEN_EXIT
     fi
 elif ! test -t 0; then
     repl
