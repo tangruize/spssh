@@ -67,7 +67,7 @@ function repl {
         fi
         trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
         stty intr undef
-        bash -c "m=l; trap 'echo; echo -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo char mode; else m=l; s=1; echo line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -N 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -ep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
+        bash -c "m=l; trap 'echo; echo -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo char mode; else m=l; s=1; echo line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
         if test "$IS_KILL" = "true"; then
             find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill
         fi
@@ -86,8 +86,8 @@ function repl {
 
 function usage() {
     echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]"
-    echo "                [--gnome/mate/xfce4-terminal] [--client-tmux] [--compress]"
-    echo "                user1@server1 ['user2@server2 [-p2222 -X SSH_ARGS ..]' ..]"
+    echo "                [--client-tmux] [--compress] [--fake-tty] [--no-tty]"
+    echo "                [--gnome/mate/xfce4-terminal] 'user1@server1 [SSH_ARGS ..]' .."
     echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']"
     echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]  # in tmux session"
 }
@@ -107,15 +107,15 @@ while test "$#" -gt 0; do
             export XTERM=tmux
             while test -n "$2"; do
                 case "$2" in
-                    -D|--detach)
+                    -d|--detach)
                         TMUX_DETACH=true
                         shift
                         ;;
-                    -E|--auto-exit)
+                    -e|--auto-exit)
                         TMUX_AUTO_EXIT=true
                         shift
                         ;;
-                    -R|--run-host-cmd)
+                    -r|--run-host-cmd)
                         TMUX_RUN_HOST_CMD="$3"
                         shift 2
                         ;;
@@ -128,7 +128,7 @@ while test "$#" -gt 0; do
         -c|--client-tmux)
             CLIENT_TMUX=true
             ;;
-        -r|--repl)
+        -R|--repl)
             if test "$2"; then
                 if test "$2" != "$REPL_KILL_WHEN_EXIT" -a "$2" != "$REPL_PIPE"; then
                     usage
@@ -140,6 +140,14 @@ while test "$#" -gt 0; do
             ;;
         -C|--compress)
             SSH_ARGS+=' -C'
+            ;;
+        -F|--fake-tty)
+            # seems useless
+            FAKE_TTY=true
+            ;;
+        -N|--no-tty)
+            # very fast for sending files, combined with spssh_cp.sh --fake-tty
+            NO_TTY=true
             ;;
         -*)
             usage
@@ -156,6 +164,13 @@ done
 if test "$#" -eq 0 && (test -z "$HAS_ARG" || test "$XTERM" != "tmux"); then
     usage
     exit 1
+fi
+
+if test "$FAKE_TTY" != "true" -a "$NO_TTY" != "true"; then
+    SSH_ARGS+=' -tt'
+else
+    SSH_ARGS+=' -T'
+    CLIENT_TMUX=false
 fi
 
 if [ -z "$(command -v $XTERM)" ]; then
@@ -236,6 +251,10 @@ function set_ssh_cmd() {
     else
         SSH_START_CMD="${SSH_START_CMD_:-export SSH_NO=$SSH_NO; \\\$SHELL}"
     fi
+
+    if [ "$FAKE_TTY" = 'true' -a "$NO_TTY" != 'true' ]; then
+        SSH_START_CMD="export SSH_NO=$SSH_NO; script -qc \\\$SHELL /dev/null"
+    fi
 }
 
 KILLCAT="pkill -g 0 -x cat"
@@ -249,7 +268,7 @@ while test "$#" -gt 0; do
     TMPFIFO=${TMPFIFO}.$((SEQ))
     mkfifo $TMPFIFO
     set_ssh_cmd $SEQ
-    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
+    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"
     fi

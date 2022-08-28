@@ -7,7 +7,7 @@ Manage multiple SSH sessions like a boss.
 SPSSH can execute the same command simultaneously and execute different commands separately on remote servers using SSH.
 It supports GUI terminal emulators (e.g. gnome-terminal, mate-terminal and xfce4-terminal) to open remote windows.
 And it also supports tmux.
-Additionally, there is a simple copy script to copy small files (less than 1GB) to all servers.
+Additionally, there is a simple copy script to copy files to all servers.
 
 ### Dependencies
 
@@ -24,14 +24,14 @@ Additionally, there is a simple copy script to copy small files (less than 1GB) 
 ```txt
 $ ./spssh.sh
 Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]
-                [--gnome/mate/xfce4-terminal] [--client-tmux] [--compress]
-                user1@server1 ['user2@server2 [-p2222 -X SSH_ARGS ..]' ..]
+                [--client-tmux] [--compress] [--fake-tty] [--no-tty]
+                [--gnome/mate/xfce4-terminal] 'user1@server1 [SSH_ARGS ..]' ..
 Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']
 Usage: spssh.sh --repl [--kill-when-exit]  # in tmux session
 
 $ spssh_cp.sh
-Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..']
-                   [--compress-program none/gzip/zstd/..] [--safe-mode]
+Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..'] [--safe-mode]
+                   [--compress-program none/gzip/zstd/..] [--fake-tty]
                    [--begin-no-ask] [--exit-no-ask] FILE/DIR [REMOTE_DIR]
         | spssh.sh [options ..] user1@server1 [user2@server2 ..]
 Usage: spssh_cp.sh [options ..] FILE/DIR [REMOTE_DIR]  # in tmux session
@@ -93,10 +93,18 @@ It is recommended to [config ssh login without password](https://askubuntu.com/a
 If you want to type special chars (e.g. TAB and Ctrl+C) in line mode, first type Ctrl+V and then type TAB (or Ctrl+C).
 
 It is not recommended to use `spssh_cp.sh` for very large files because it is very inefficient
-(HOST: tar -> (compress program) -> base64; CLIENTS: un-base64 -> (compress program) -> un-tar).
+(HOST: tar -> (compress program) -> base64; CLIENTS: un-base64 -> (compress program) -> un-tar.
+~33% transmission overhead due to base64).
 In the copying progress, you cannot enter any keys in any windows
 (un-base64 and un-tar will fail and it is treated as interruptions),
 you cannot send other files and you cannot add other remote servers.
+
+For very fast connections (>30MB/s),
+you can specify `--no-tty` option for `spssh.sh` to reach the fastest receiving speed,
+and specify `--fake-tty` option for `spssh_cp.sh` to obtain a fake tty if you want to reuse the connection.
+For slow connections (<5MB/s), `--compress` for `spssh.sh` may help to reduce the base64 overhead.
+And `--compress-program zstd` for `spssh_cp.sh` can be used to compress high compression ratio files.
+In other cases, these options are not recommended to use.
 
 In some circumstances, the `TMPDIR` is not deleted after abnormal exit. You can delete `/tmp/tmp.*.spssh` manually.
 It is not necessary to do it because they will be deleted after reboot.
