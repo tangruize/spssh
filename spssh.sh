@@ -40,8 +40,10 @@ function repl {
             fi
         fi
         if [ -n "$SESSION" -a -t 0 ]; then
-            tmux select-window -t "$SESSION:0" 1>&2
-            tmux attach-session -d -t "$SESSION" 1>&2 && exit
+            if tmux select-window -t "$SESSION:0" 1>&2; then
+                tmux split-window -t "$SESSION:0" " echo \" [ -z \\\"\\\$TMUX_PANE\\\" -a -z \\\"\\\$SSH_TTY\\\" -a \\\"\\\$TERM\\\" = 'xterm-256color' ] && stty cols \$WIDTH rows \$HEIGHT\" >\"\$TMPDIR/host\"" 1>&2
+                tmux attach-session -d -t "$SESSION" 1>&2 && exit
+            fi
         fi
     else
         if [ "$1" = "$REPL_KILL_WHEN_EXIT" ]; then
@@ -58,26 +60,26 @@ function repl {
     if test -t 0; then
         HISTORY=`mktemp --suffix=.history`
         echo -n "Run commands on all servers" 1>&2
-        if test "$IS_KILL" = true; then
+        if test "$IS_KILL" = true -o "$1" = "$REPL_PIPE"; then
             echo ", Ctrl + D to exit all servers, Ctrl + \\ to switch line/char mode:" 1>&2
-        elif test "$1" = "$REPL_PIPE"; then
-            echo ", Ctrl + D to exit all servers:" 1>&2
         else
             echo ", Ctrl + D to exit current repl, Ctrl + \\ to switch line/char mode:" 1>&2
         fi
         trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
         stty intr undef
-        bash -c "m=l; trap 'echo; echo -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo char mode; else m=l; s=1; echo line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
+        bash -c "m=l; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
         if test "$IS_KILL" = "true"; then
             find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill
         fi
         stty intr ^C
     else
+        trap '' QUIT
         if test "$1" = "$REPL_PIPE"; then
             cat
         else
             cat >> "$TMPFILE"
         fi
+        trap QUIT
     fi
     if [ "$1" = "$REPL_PIPE" ]; then
         exit 1
@@ -170,7 +172,10 @@ if test "$FAKE_TTY" != "true" -a "$NO_TTY" != "true"; then
     SSH_ARGS+=' -tt'
 else
     SSH_ARGS+=' -T'
-    CLIENT_TMUX=false
+    if test "$NO_TTY" = "true"; then
+        CLIENT_TMUX=false
+        FAKE_TTY=false
+    fi
 fi
 
 if [ -z "$(command -v $XTERM)" ]; then
@@ -241,19 +246,21 @@ function set_ssh_cmd() {
         SSH_START_CMD_=" if ! tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME; fi; exit"
     fi
 
-    if [ "$XTERM" = "tmux" ]; then
+    if [ "$XTERM" = "tmux" -a "$NO_TTY" != "true" ]; then
         if [ -n "$SSH_START_CMD_" ]; then
             TMUX_SEND_KEYS="${SSH_START_CMD_//\\/}"
-        else
+        elif [ "$FAKE_TTY" != 'true' ]; then
             TMUX_SEND_KEYS=" export SSH_NO=$SSH_NO"
         fi
         unset SSH_START_CMD_
     else
-        SSH_START_CMD="${SSH_START_CMD_:-export SSH_NO=$SSH_NO; \\\$SHELL}"
+        SSH_START_CMD="${SSH_START_CMD_:-env SSH_NO=$SSH_NO \\\$SHELL}"
     fi
 
-    if [ "$FAKE_TTY" = 'true' -a "$NO_TTY" != 'true' ]; then
-        SSH_START_CMD="export SSH_NO=$SSH_NO; script -qc \\\$SHELL /dev/null"
+    if [ "$XTERM" != "tmux" -a "$FAKE_TTY" = 'true' -a "$NO_TTY" != 'true' ]; then
+        SSH_START_CMD="env TERM=xterm-256color script -qc \\\"${SSH_START_CMD//\\/\\\\\\}\\\" /dev/null"
+    elif [ "$XTERM" = "tmux" -a "$FAKE_TTY" = 'true' ]; then
+        SSH_START_CMD="${SSH_START_CMD_:-env SSH_NO=$SSH_NO TERM=xterm-256color script -qc \\\$SHELL /dev/null}"
     fi
 }
 
@@ -276,7 +283,7 @@ while test "$#" -gt 0; do
     case "$XTERM" in
         tmux)
             tmux new-window -d -t "$SESSION" -n "$NAME" " $CMD"
-            tmux send-keys -t "$SESSION:$NAME" " stty cols $WIDTH rows $HEIGHT" C-m C-l
+            test "$NO_TTY" != "true" && tmux send-keys -t "$SESSION:$NAME" " stty cols $WIDTH rows $HEIGHT" C-m C-l
             test -n "$TMUX_SEND_KEYS" && tmux send-keys -t "$SESSION:$NAME" "$TMUX_SEND_KEYS" C-m C-l
             ;;
         gnome-terminal)

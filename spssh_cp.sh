@@ -112,7 +112,14 @@ SENTINEL_BEFORE_CMD="awk 'BEGIN{ for (c=0; c<4095; c++) { printf \" \" } printf 
 echo -e " stty -echo 2>/dev/null; BAK=\$PS1; unset PS1"
 sleep 0.5
 echo " echo -en Receiving '\"$FILE\" ...\n\r'; mkdir -p '$DSTDIR'; bash -c \"trap 'if test \\\$? -ne 0; then echo; echo -en \\\"Interrupted by user\n\r\\\"; sleep 3; exit 1; fi' EXIT; stty -echo -icanon intr undef 2>/dev/null; $RECEIVE_CMD | base64 -d 2> /dev/null | dd bs=64K iflag=fullblock status=progress 2> >(stdbuf -o0 tr '\r' '\n' | stdbuf -oL grep '/s' | stdbuf -o0 tr '\n' '\r' >&2; echo >&2) | tar x $COMPRESS_ARGS -C '$DSTDIR' 2> /dev/null\" || exit 1"
-(cd "$SRCDIR"; eval "$SENTINEL_BEFORE_CMD"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo " stty echo icanon intr ^C 2>/dev/null; PS1=\$BAK; unset BAK"; test "$FAKE_TTY" = "true" && echo ' script -qc $SHELL /dev/null; exit')
+(cd "$SRCDIR"; eval "$SENTINEL_BEFORE_CMD"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo " stty echo icanon intr ^C 2>/dev/null; PS1=\$BAK; unset BAK")
+
+if test "$FAKE_TTY" = "true"; then
+    echo ' env TERM=xterm-256color script -qc $SHELL /dev/null; exit'
+    if test -n "$TMPDIR" -a -n "$TMUX_PANE" -a -n "$WIDTH"; then
+        echo " [ -z \"\$TMUX_PANE\" -a -z \"\$SSH_TTY\" ] && stty cols $WIDTH rows $HEIGHT 2>/dev/null"
+    fi
+fi
 
 if test -z "$ALREADY_RUNNING" -o ! -t 0; then
     if test -t 0; then
