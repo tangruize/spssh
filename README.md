@@ -24,15 +24,15 @@ Additionally, there is a simple copy script to copy small files (less than 1GB) 
 ```txt
 $ ./spssh.sh
 Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]
-                [--gnome/mate/xfce4-terminal] [--client-tmux]
-                user1@server1 ['user2@server2 [-p2222 -X SSH_ARSG ..]' ..]
+                [--gnome/mate/xfce4-terminal] [--client-tmux] [--compress]
+                user1@server1 ['user2@server2 [-p2222 -X SSH_ARGS ..]' ..]
 Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']
-Usage: spssh.sh --repl [--kill-when-exit]
+Usage: spssh.sh --repl [--kill-when-exit]  # in tmux session
 
 $ spssh_cp.sh
-Usage: spssh_cp.sh [--safe-mode] [--begin-no-ask] [--exit-no-ask]
-                   [--find-args '-maxdepth 1 -name \*.sh ..']
-                   [--compress-program gzip/zstd/..] FILE/DIR [REMOTE_DIR]
+Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..']
+                   [--compress-program none/gzip/zstd/..] [--safe-mode]
+                   [--begin-no-ask] [--exit-no-ask] FILE/DIR [REMOTE_DIR]
         | spssh.sh [options ..] user1@server1 [user2@server2 ..]
 Usage: spssh_cp.sh [options ..] FILE/DIR [REMOTE_DIR]  # in tmux session
 ```
@@ -93,8 +93,9 @@ It is recommended to [config ssh login without password](https://askubuntu.com/a
 If you want to type special chars (e.g. TAB and Ctrl+C) in line mode, first type Ctrl+V and then type TAB (or Ctrl+C).
 
 It is not recommended to use `spssh_cp.sh` for very large files because it is very inefficient
-(HOST: tar -> gzip/zstd -> base64; CLIENTS: sed -> un-base64 -> un-gzip/zstd -> un-tar; zstd is better).
-In the copying progress, you cannot enter any keys in any windows (un-tar will fail and it is treated as interruptions),
+(HOST: tar -> (compress program) -> base64; CLIENTS: un-base64 -> (compress program) -> un-tar).
+In the copying progress, you cannot enter any keys in any windows
+(un-base64 and un-tar will fail and it is treated as interruptions),
 you cannot send other files and you cannot add other remote servers.
 
 In some circumstances, the `TMPDIR` is not deleted after abnormal exit. You can delete `/tmp/tmp.*.spssh` manually.

@@ -86,10 +86,10 @@ function repl {
 
 function usage() {
     echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]"
-    echo "                [--gnome/mate/xfce4-terminal] [--client-tmux]"
-    echo "                user1@server1 ['user2@server2 [-p2222 -X SSH_ARSG ..]' ..]"
+    echo "                [--gnome/mate/xfce4-terminal] [--client-tmux] [--compress]"
+    echo "                user1@server1 ['user2@server2 [-p2222 -X SSH_ARGS ..]' ..]"
     echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']"
-    echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]"
+    echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]  # in tmux session"
 }
 
 while test "$#" -gt 0; do
@@ -137,6 +137,9 @@ while test "$#" -gt 0; do
             fi
             repl $2
             exit
+            ;;
+        -C|--compress)
+            SSH_ARGS+=' -C'
             ;;
         -*)
             usage
@@ -207,7 +210,7 @@ if [ "$XTERM" = "tmux" ]; then
     fi
     if test "$TMUX_RUN_HOST_CMD"; then
         tmux split-window -t "$SESSION:0"
-        tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-m
+        tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-l C-m
     fi
 else
     KILLHOST="kill -INT -- -$$"
@@ -231,7 +234,7 @@ function set_ssh_cmd() {
         fi
         unset SSH_START_CMD_
     else
-        SSH_START_CMD="${SSH_START_CMD_:-export SSH_NO=$SSH_NO; \\\$SHELL -i}"
+        SSH_START_CMD="${SSH_START_CMD_:-export SSH_NO=$SSH_NO; \\\$SHELL}"
     fi
 }
 
@@ -246,7 +249,7 @@ while test "$#" -gt 0; do
     TMPFIFO=${TMPFIFO}.$((SEQ))
     mkfifo $TMPFIFO
     set_ssh_cmd $SEQ
-    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
+    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh -tt $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"
     fi
