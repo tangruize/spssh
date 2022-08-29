@@ -5,7 +5,7 @@ Manage multiple SSH sessions like a boss.
 ## Usage
 
 SPSSH can execute the same command simultaneously and execute different commands separately on remote servers using SSH.
-It supports GUI terminal emulators (e.g. gnome-terminal, mate-terminal and xfce4-terminal) to open remote windows.
+It supports GUI terminal emulators (e.g. gnome-terminal, konsole, mate-terminal and xfce4-terminal) to open SSH windows.
 And it also supports tmux.
 Additionally, there is a simple copy script to copy files to all servers.
 
@@ -23,11 +23,13 @@ Additionally, there is a simple copy script to copy files to all servers.
 
 ```txt
 $ ./spssh.sh
-Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]
+Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd 'host cmd']]
+                [--gnome/mate/xfce4-terminal/konsole [--geometry 80x24+0+0 ..]]
                 [--client-tmux] [--compress] [--fake-tty] [--no-tty]
-                [--gnome/mate/xfce4-terminal] 'user1@server1 [SSH_ARGS ..]' ..
+                'user1@server1 [SSH_ARGS ..]' ..
 Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']
 Usage: spssh.sh --repl [--kill-when-exit]  # in tmux session
+Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G ..]] [-c] [-C] [-F/-N] ..
 
 $ spssh_cp.sh
 Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..'] [--safe-mode]
@@ -35,6 +37,7 @@ Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..'] [--safe-mode]
                    [--begin-no-ask] [--exit-no-ask] FILE/DIR [REMOTE_DIR]
         | spssh.sh [options ..] user1@server1 [user2@server2 ..]
 Usage: spssh_cp.sh [options ..] FILE/DIR [REMOTE_DIR]  # in tmux session
+Usage: spssh_cp.sh [-f 'args'] [-s] [-C 'program'] [-F] [-b] [-e]
 ```
 
 ### Examples
@@ -111,7 +114,7 @@ It is not necessary to do it because they will be deleted after reboot.
 
 It is not possible to auto resize the terminal size if window size changed,
 you can run `stty cols COLUMNS rows LINES` to change it manually.
-In tmux host REPL (client is not in tmux), you can type `#RESIZE` to send a stty command.
+In tmux host REPL (and client is not in tmux), you can type `#RESIZE` to send a stty command.
 
 ## Related Tools
 

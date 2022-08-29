@@ -39,6 +39,7 @@ function usage() {
     echo 1>&2 "                   [--begin-no-ask] [--exit-no-ask] FILE/DIR [REMOTE_DIR]"
     echo 1>&2 "        | spssh.sh [options ..] user1@server1 [user2@server2 ..]"
     echo 1>&2 "Usage: spssh_cp.sh [options ..] FILE/DIR [REMOTE_DIR]  # in tmux session"
+    echo 1>&2 "Usage: spssh_cp.sh [-f 'args'] [-s] [-C 'program'] [-F] [-b] [-e]"
     test -t 1 || (read -N 1 -sp "Press any key to exit: " && echo " exit")
 }
 
@@ -115,9 +116,10 @@ echo " echo -en Receiving '\"$FILE\" ...\n\r'; mkdir -p '$DSTDIR'; bash -c \"tra
 (cd "$SRCDIR"; eval "$SENTINEL_BEFORE_CMD"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo " stty echo icanon intr ^C 2>/dev/null; PS1=\$BAK; unset BAK")
 
 if test "$FAKE_TTY" = "true"; then
-    echo ' env TERM=xterm-256color script -qc $SHELL /dev/null; exit'
     if test -n "$TMPDIR" -a -n "$TMUX_PANE" -a -n "$WIDTH"; then
-        echo " [ -z \"\$TMUX_PANE\" -a -z \"\$SSH_TTY\" ] && stty cols $WIDTH rows $HEIGHT 2>/dev/null"
+        echo ' if test $TERM = dumb; then env TERM=xterm-256color script -qc "stty cols '$WIDTH' rows '$HEIGHT'; $SHELL" /dev/null; exit; fi'
+    else
+        echo ' if test $TERM = dumb; then env TERM=xterm-256color script -qc $SHELL /dev/null; exit; fi'
     fi
 fi
 
@@ -134,7 +136,7 @@ if test -z "$ALREADY_RUNNING" -o ! -t 0; then
     fi
     REPLY=${REPLY,,}
     if test "$REPLY" != "y"; then
-        $(dirname "$0")/spssh.sh --repl --pipe
+        env FAKE_TTY=$FAKE_TTY $(dirname "$0")/spssh.sh --repl --pipe
         EXIT_STATUS=$?
     fi
     if test "$REPLY" = "y" -o "$EXIT_STATUS" != 0; then

@@ -4,19 +4,42 @@
 #TMUX_AUTO_EXIT=true
 TMUX_AUTO_EXIT=${TMUX_AUTO_EXIT:-false}
 
+# Not to attach to tmux session
+#TMUX_DETACH=true
+TMUX_DETACH=${TMUX_DETACH:-false}
+
 #DEFAULT_TERM=tmux
 #DEFAULT_TERM=gnome-terminal
 DEFAULT_TERM=$DEFAULT_TERM
 
+# Client SSH run tmux
 #CLIENT_TMUX=true
 CLIENT_TMUX=${CLIENT_TMUX:-false}
+
+# GUI terminal geometries
+#GEOMETRIES=(80x24 110x28 ..)
+GEOMETRIES=(${GEOMETRY[@]})
+
+# Use `script` to create a fake tty
+#FAKE_TTY=true
+FAKE_TTY=${FAKE_TTY:-false}
+
+# Not to allocate tty (fast for sending files)
+#NO_TTY=true
+NO_TTY=${NO_TTY:-false}
+
+# If stdin is not tty, use NO_TTY
+#NO_TTY_IF_PIPED=true
+NO_TTY_IF_PIPED=${NO_TTY_IF_PIPED:-false}
+if test "$NO_TTY_IF_PIPED" = "true" -a ! -t 0; then
+    NO_TTY=true
+fi
 
 if test -z "$DISPLAY" -a -z "$DEFAULT_TERM"; then
     DEFAULT_TERM=tmux
 fi
 
-# konsole is incompatible (when using vim, tmux ...), consider it as the last one to use
-terms=($DEFAULT_TERM x-terminal-emulator gnome-terminal mate-terminal xfce4-terminal tmux konsole)
+terms=($DEFAULT_TERM x-terminal-emulator gnome-terminal konsole mate-terminal xfce4-terminal tmux)
 if [ -z "$XTERM" ]; then
     for t in ${terms[*]}; do
         if [ $(command -v $t) ]; then
@@ -40,8 +63,8 @@ function repl {
             fi
         fi
         if [ -n "$SESSION" -a -t 0 ]; then
-            if tmux select-window -t "$SESSION:0" 1>&2; then
-                tmux split-window -t "$SESSION:0" " echo \" [ -z \\\"\\\$TMUX_PANE\\\" -a -z \\\"\\\$SSH_TTY\\\" -a \\\"\\\$TERM\\\" = 'xterm-256color' ] && stty cols \$WIDTH rows \$HEIGHT\" >\"\$TMPDIR/host\"" 1>&2
+            if tmux select-pane -t "$SESSION:0.0" 1>&2; then
+                test "$FAKE_TTY" = "true" && tmux new-window -d -t "$SESSION" " W=\$(tput cols); H=\$(tput lines); echo \" [ -z \\\"\\\$TMUX_PANE\\\" -a -z \\\"\\\$SSH_TTY\\\" -a \\\"\\\$TERM\\\" = 'xterm-256color' ] && stty cols \$W rows \$H\" >\"\$TMPDIR/host\"" 1>&2
                 tmux attach-session -d -t "$SESSION" 1>&2 && exit
             fi
         fi
@@ -87,17 +110,22 @@ function repl {
 }
 
 function usage() {
-    echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd ' host cmd']]"
+    echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd 'host cmd']]"
+    echo "                [--gnome/mate/xfce4-terminal/konsole [--geometry 80x24+0+0 ..]]"
     echo "                [--client-tmux] [--compress] [--fake-tty] [--no-tty]"
-    echo "                [--gnome/mate/xfce4-terminal] 'user1@server1 [SSH_ARGS ..]' .."
+    echo "                'user1@server1 [SSH_ARGS ..]' .."
     echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']"
     echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]  # in tmux session"
+    echo "Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G ..]] [-c] [-C] [-F/-N] .."
 }
 
 while test "$#" -gt 0; do
     case "$1" in
         -g|--gnome-terminal)
             export XTERM=gnome-terminal
+            ;;
+        -k|--konsole)
+            export XTERM=konsole
             ;;
         -m|--mate-terminal)
             export XTERM=mate-terminal
@@ -129,6 +157,10 @@ while test "$#" -gt 0; do
             ;;
         -c|--client-tmux)
             CLIENT_TMUX=true
+            ;;
+        -G|--geometry)
+            GEOMETRIES=(${GEOMETRIES[@]} $2)
+            shift
             ;;
         -R|--repl)
             if test "$2"; then
@@ -213,8 +245,8 @@ fi
 if [ "$XTERM" = "tmux" ]; then
     if test -z "$ALREADY_RUNNING"; then
         echo "[SPSSH] SESSION=$SESSION" 1>&2
-        export WIDTH=$(tput cols)
-        export HEIGHT=$(($(tput lines)-1))
+        export WIDTH=$(tput cols || echo 80)
+        export HEIGHT=$(($(tput lines || echo 24)-1))
         set -e
         if ! tmux has-session -t "$SESSION" 2>/dev/null; then
             tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "$0 --repl $REPL_KILL_WHEN_EXIT"
@@ -236,6 +268,29 @@ else
     KILLHOST="kill -INT -- -$$"
 fi
 
+function set_geometry() {
+    if [ "$XTERM" = "tmux" ]; then
+        unset STTY_CMD
+        return
+    fi
+    unset GEOMETRY_OPTIONS
+    GEOMETRY=${GEOMETRIES[0]:-80x24}
+    if [ "${#GEOMETRIES[@]}" -gt 1 ]; then
+        unset GEOMETRIES[0]
+        GEOMETRIES=(${GEOMETRIES[@]})
+    fi
+    XSIZE=($(tr '[+x\-]' ' ' <<< "$GEOMETRY"))
+    if [ "$XTERM" = "konsole" ]; then
+        # konsole (v22.04.1) may increase/decrease the row by 1...
+        if [ -n "${XSIZE[2]}" -a -n "${XSIZE[3]}" ]; then
+            GEOMETRY_OPTIONS="--geometry $(sed -E 's/[0-9]+x[0-9]+(.*)/\1/' <<< "$GEOMETRY")"
+        fi
+    fi
+    if [ "$NO_TTY" != "true" ]; then
+        STTY_CMD=" stty cols ${XSIZE[0]} rows ${XSIZE[1]};"
+    fi
+}
+
 function set_ssh_cmd() {
     SSH_START_CMD_=
     SSH_NO=$1
@@ -243,7 +298,7 @@ function set_ssh_cmd() {
         SSH_NAME_PREFIX=SSH$(echo -n $SESSION | tail -c 2)
         SSH_NAME=$SSH_NAME_PREFIX$(echo -n $(mktemp -u) | tail -c 2)
         TMUX_CLIENT_ENV="-e SSH_NO=$SSH_NO -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\" -e DISPLAY=\\\"\\\$DISPLAY\\\""
-        SSH_START_CMD_=" if ! tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME; fi; exit"
+        SSH_START_CMD_=" $STTY_CMD if ! tmux new-session -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME; fi; exit"
     fi
 
     if [ "$XTERM" = "tmux" -a "$NO_TTY" != "true" ]; then
@@ -254,7 +309,7 @@ function set_ssh_cmd() {
         fi
         unset SSH_START_CMD_
     else
-        SSH_START_CMD="${SSH_START_CMD_:-env SSH_NO=$SSH_NO \\\$SHELL}"
+        SSH_START_CMD="${SSH_START_CMD_:-$STTY_CMD env SSH_NO=$SSH_NO \\\$SHELL}"
     fi
 
     if [ "$XTERM" != "tmux" -a "$FAKE_TTY" = 'true' -a "$NO_TTY" != 'true' ]; then
@@ -274,6 +329,7 @@ while test "$#" -gt 0; do
     echo $SEQ > "$SEQFILE"
     TMPFIFO=${TMPFIFO}.$((SEQ))
     mkfifo $TMPFIFO
+    set_geometry
     set_ssh_cmd $SEQ
     CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
@@ -287,10 +343,13 @@ while test "$#" -gt 0; do
             test -n "$TMUX_SEND_KEYS" && tmux send-keys -t "$SESSION:$NAME" "$TMUX_SEND_KEYS" C-m C-l
             ;;
         gnome-terminal)
-            eval $XTERM --title="$NAME" -- $CMD & sleep 0.1
+            eval $XTERM --geometry="$GEOMETRY" --title="$NAME" -- $CMD & sleep 0.1
+            ;;
+        konsole)
+            $XTERM -p "tabtitle=$NAME" -p "TerminalColumns=${XSIZE[0]}" -p "TerminalRows=${XSIZE[1]}" $GEOMETRY_OPTIONS -e "$CMD" & sleep 0.1
             ;;
         *)
-            $XTERM --title="$NAME" -e "$CMD" 2> /dev/null & sleep 0.1
+            $XTERM --geometry="$GEOMETRY" --title="$NAME" -e "$CMD" & sleep 0.1
             ;;
     esac
     shift
