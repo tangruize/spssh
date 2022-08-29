@@ -111,6 +111,7 @@ It is not necessary to do it because they will be deleted after reboot.
 
 It is not possible to auto resize the terminal size if window size changed,
 you can run `stty cols COLUMNS rows LINES` to change it manually.
+In tmux host REPL (client is not in tmux), you can type `#RESIZE` to send a stty command.
 
 ## Related Tools
 
