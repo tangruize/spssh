@@ -16,6 +16,10 @@ DEFAULT_TERM=$DEFAULT_TERM
 #CLIENT_TMUX=true
 CLIENT_TMUX=${CLIENT_TMUX:-false}
 
+# Send stty cmd if window size changed
+#AUTO_RESIZE=true
+AUTO_RESIZE=${AUTO_RESIZE:-false}
+
 # GUI terminal geometries
 #GEOMETRIES=(80x24 110x28 ..)
 GEOMETRIES=(${GEOMETRY[@]})
@@ -31,9 +35,6 @@ NO_TTY=${NO_TTY:-false}
 # If stdin is not tty, use NO_TTY
 #NO_TTY_IF_PIPED=true
 NO_TTY_IF_PIPED=${NO_TTY_IF_PIPED:-false}
-if test "$NO_TTY_IF_PIPED" = "true" -a ! -t 0; then
-    NO_TTY=true
-fi
 
 if test -z "$DISPLAY" -a -z "$DEFAULT_TERM"; then
     DEFAULT_TERM=tmux
@@ -64,7 +65,7 @@ function repl {
         fi
         if [ -n "$SESSION" -a -t 0 ]; then
             if tmux select-window -t "$SESSION:0" 1>&2; then
-                test "$FAKE_TTY" = "true" && tmux new-window -d -t "$SESSION" " W=\$(tput cols); H=\$(tput lines); echo \" [ -z \\\"\\\$TMUX_PANE\\\" -a -z \\\"\\\$SSH_TTY\\\" -a \\\"\\\$TERM\\\" = 'xterm-256color' ] && stty cols \$W rows \$H\" >\"\$TMPDIR/host\"" 1>&2
+                test "$FAKE_TTY" = "true" && tmux new-window -d -t "$SESSION" " W=\$(tput cols); H=\$(tput lines); echo \" [ -z \\\"\\\$TMUX\\\" -a -z \\\"\\\$SSH_TTY\\\" -a \\\"\\\$TERM\\\" = 'xterm-256color' ] && stty cols \$W rows \$H\" >\"\$TMPDIR/host\"" 1>&2
                 tmux select-pane -t "$SESSION:0.0"
                 tmux attach-session -d -t "$SESSION" 1>&2 && exit
             fi
@@ -91,7 +92,7 @@ function repl {
         fi
         trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
         stty intr undef
-        bash -c "m=l; function resize() { if test -n \"\$TMUX_PANE\"; then W=\$(tput cols); H=\$(tput lines); echo \" stty cols \$W rows \\\$(test -z \\\$TMUX_PANE && echo \$H || echo \$((H-1)))\"; fi }; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; elif test \"\$r\" = '#RESIZE'; then resize; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
+        bash -c "m=l; function resize() { if test -n \"\$TMUX\"; then W=\$(tput cols); H=\$(tput lines); echo \" test -z \\\$TMUX && stty cols \$W rows \$H 2>/dev/null\"; fi }; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; elif test \"\$r\" = '#RESIZE'; then resize; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
         if test "$IS_KILL" = "true"; then
             find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill
         fi
@@ -113,11 +114,12 @@ function repl {
 function usage() {
     echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd 'host cmd']]"
     echo "                [--gnome/mate/xfce4-terminal/konsole [--geometry 80x24+0+0 ..]]"
-    echo "                [--client-tmux] [--compress] [--fake-tty] [--no-tty]"
-    echo "                'user1@server1 [SSH_ARGS ..]' .."
-    echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']"
+    echo "                [--client-tmux] [--auto-resize] [--compress]"
+    echo "                [--fake-tty] [--no-tty] 'user1@server1 [SSH_ARGS ..]' .."
+    echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd 'host cmd']"
     echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]  # in tmux session"
-    echo "Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G ..]] [-c] [-C] [-F/-N] .."
+    echo "Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G 'geometry' ..]]"
+    echo "                [-c] [-a] [-C] [-F/-N] 'user1@server1 [SSH_ARGS ..]' .."
 }
 
 while test "$#" -gt 0; do
@@ -163,6 +165,12 @@ while test "$#" -gt 0; do
         -c|--client-tmux)
             CLIENT_TMUX=true
             ;;
+        -a|--auto-resize)
+            AUTO_RESIZE=true
+            ;;
+        -p|--no-tty-if-piped)
+            NO_TTY_IF_PIPED=true
+            ;;
         -G|--geometry)
             GEOMETRIES=(${GEOMETRIES[@]} $2)
             shift
@@ -205,6 +213,10 @@ if test "$#" -eq 0 && (test -z "$HAS_ARG" || test "$XTERM" != "tmux"); then
     exit 1
 fi
 
+if test "$NO_TTY_IF_PIPED" = "true" -a ! -t 0; then
+    NO_TTY=true
+fi
+
 if test "$FAKE_TTY" != "true" -a "$NO_TTY" != "true"; then
     SSH_ARGS+=' -tt'
 else
@@ -213,6 +225,10 @@ else
         CLIENT_TMUX=false
         FAKE_TTY=false
     fi
+fi
+
+if test "$CLIENT_TMUX" = "true"; then
+    AUTO_RESIZE=false
 fi
 
 if [ -z "$(command -v $XTERM)" ]; then
@@ -261,7 +277,7 @@ if [ "$XTERM" = "tmux" ]; then
                 fi
             fi
             tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "bash -c 'set -x; $TMUX_MOUSE_OPTION $TMUX_CHANGE_PREFIX'; $0 --repl $REPL_KILL_WHEN_EXIT"
-        elif test -n "$TMUX_PANE"; then
+        elif test -n "$TMUX"; then
             CURRENT_IN_TMUX=true
         else
             tmux split-window -t "$SESSION:0" "$0 --repl $REPL_KILL_WHEN_EXIT"
@@ -275,7 +291,9 @@ if [ "$XTERM" = "tmux" ]; then
         tmux split-window -t "$SESSION:0"
         tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-l C-m
     fi
-    STTY_CMD=" stty cols $WIDTH rows $HEIGHT;"
+    if [ "$NO_TTY" != "true" ]; then
+        STTY_CMD=" stty cols $WIDTH rows $HEIGHT;"
+    fi
 else
     KILLHOST="kill -INT -- -$$"
 fi
@@ -316,7 +334,7 @@ function set_ssh_cmd() {
         SSH_NAME_PREFIX=SSH$(echo -n $SESSION | tail -c 2)
         SSH_NAME=$SSH_NAME_PREFIX$(echo -n $(mktemp -u) | tail -c 2)
         TMUX_CLIENT_ENV="-x $WIDTH -y $((HEIGHT-1)) -e SSH_NO=$SSH_NO -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\" -e DISPLAY=\\\"\\\$DISPLAY\\\""
-        SSH_START_CMD="$STTY_CMD if tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux attach-session -t $SSH_NAME_PREFIX; else tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux attach-session -t $SSH_NAME; fi; exit"
+        SSH_START_CMD="$STTY_CMD if tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux set-option -t $SSH_NAME_PREFIX mouse on; tmux attach-session -t $SSH_NAME_PREFIX; else tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux set-option -t $SSH_NAME mouse on; tmux attach-session -t $SSH_NAME; fi; exit"
     fi
 
     SSH_START_CMD="${SSH_START_CMD:-$STTY_CMD env SSH_NO=$SSH_NO \\\$SHELL}"
@@ -326,8 +344,34 @@ function set_ssh_cmd() {
     fi
 }
 
-KILLCAT="pkill -g 0 -x cat"
+KILLCAT="pkill -g 0 -x cat; pkill -g 0 -x python3"
 KILLEXIT="find $TMPDIR -type p -exec false {} + && ($RMTMPDIR; $KILLHOST)"
+
+function set_cat() {
+    FIFO_FILE=$1
+    if [ -n "$(command -v python3)" -a -n "$(command -v base64)" -a "$AUTO_RESIZE" = "true" ]; then
+        PYTHON_AUTO_RESIZE_CAT=$(cat <<EOF
+import os
+import sys
+import signal
+o = os.open(sys.argv[1], os.O_APPEND|os.O_WRONLY)
+def winch_handler(sig, frame):
+    x,y = os.get_terminal_size()
+    os.write(o, b' test -z \$TMUX && stty rows ' + str(y).encode() + b' cols ' + str(x).encode() + b' 2>/dev/null\n')
+signal.signal(signal.SIGWINCH, winch_handler)
+while True:
+    i = os.read(0, 4096)
+    if len(i) <= 0:
+        os.close(o)
+        quit()
+    os.write(o, i)
+EOF
+    )
+        CAT_PROGRAM="python3 -c \"\$(echo $(base64 -w 0 <<< "$PYTHON_AUTO_RESIZE_CAT") | base64 -d)\" $FIFO_FILE"
+    else
+        CAT_PROGRAM="cat >> $FIFO_FILE"
+    fi
+}
 
 while test "$#" -gt 0; do
     TMPFIFO=`mktemp -u --suffix=.ssh`
@@ -338,7 +382,8 @@ while test "$#" -gt 0; do
     mkfifo $TMPFIFO
     set_geometry
     set_ssh_cmd $SEQ
-    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & (cat >> $TMPFIFO; rm -f $TMPFIFO; $KILLEXIT)'; exit"
+    set_cat $TMPFIFO
+    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & ($CAT_PROGRAM; rm -f $TMPFIFO; $KILLEXIT)'; exit"
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"
     fi

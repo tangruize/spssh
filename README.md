@@ -14,7 +14,8 @@ Additionally, there is a simple copy script to copy files to all servers.
 - Host:
   - one of tmux/gnome-terminal/mate-terminal/xfce4-terminal
   - bash, coreutils, util-linux, procps, findutils, openssh-client, lsof
-  - tar, gzip/zstd, awk (optinoal, for spssh\_cp.sh)
+  - tar, gzip/zstd, awk (optional, for spssh\_cp.sh)
+  - python3 (optional, for `--auto-resize` argument)
 - Clients:
   - tmux (optional, for `--client-tmux` argument)
   - bash, tar, gzip/zstd, sed (optional, for spssh\_cp.sh)
@@ -25,11 +26,12 @@ Additionally, there is a simple copy script to copy files to all servers.
 $ ./spssh.sh
 Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd 'host cmd']]
                 [--gnome/mate/xfce4-terminal/konsole [--geometry 80x24+0+0 ..]]
-                [--client-tmux] [--compress] [--fake-tty] [--no-tty]
-                'user1@server1 [SSH_ARGS ..]' ..
-Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd ' host cmd']
+                [--client-tmux] [--auto-resize] [--compress]
+                [--fake-tty] [--no-tty] 'user1@server1 [SSH_ARGS ..]' ..
+Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd 'host cmd']
 Usage: spssh.sh --repl [--kill-when-exit]  # in tmux session
-Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G ..]] [-c] [-C] [-F/-N] ..
+Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G 'geometry' ..]]
+                [-c] [-a] [-C] [-F/-N] 'user1@server1 [SSH_ARGS ..]' ..
 
 $ spssh_cp.sh
 Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..'] [--safe-mode]
@@ -37,7 +39,7 @@ Usage: spssh_cp.sh [--find-args '-maxdepth 1 -name \*.sh ..'] [--safe-mode]
                    [--begin-no-ask] [--exit-no-ask] FILE/DIR [REMOTE_DIR]
         | spssh.sh [options ..] user1@server1 [user2@server2 ..]
 Usage: spssh_cp.sh [options ..] FILE/DIR [REMOTE_DIR]  # in tmux session
-Usage: spssh_cp.sh [-f 'args'] [-s] [-C 'program'] [-F] [-b] [-e]
+Usage: spssh_cp.sh [-f 'args'] [-s] [-C 'program'] [-F] [-b] [-e] F/D [RD]
 ```
 
 ### Examples
@@ -77,7 +79,7 @@ If same clients are connected multiple times, they share the same tmux group
 (thus, run `tmux kill-session && exit` to close the window).
 If the host REPL exits with Ctrl+D, it kills client SSH connections, but clients tmux sessions are still running.
 
-In the host REPL (not piped), press Ctrl + \ (backslash) to toggle line mode and char mode.
+In the host REPL, press Ctrl + \ (backslash) to toggle line mode and char mode.
 In char mode, characters are sent to clients immediately, so that vim can function properly.
 
 Each client SSH is set with the `SSH_NO` environment, which is the ordinal number of the client (starting from 1).
@@ -87,13 +89,15 @@ It is useful to determine which client to run which command.
 `echo './script.sh; exit' | spssh_cp.sh './script.sh' | ./spssh.sh user@example.com`
 to run './script.sh' after sending it.
 
-## Issues
+The `--auto-resize` option (without `--client-tmux`) sends the `stty cols COLUMNS rows LINES` cmd
+to the client if window size changed. If the client is running a program, it will cause problems.
+I don't know how to send terminal control sequences. (Maybe there should be a daemon program, but that is too complex!)
+It is better to run `stty cols COLUMNS rows LINES` to change window size manually.
+In tmux host REPL (and client is not in tmux), you can type `#RESIZE` to send a stty command.
 
-You can [specify `SSH_ASKPASS` program to provide the passphrase](https://stackoverflow.com/a/15090479/9543140),
-otherwise ssh will open an GUI window dialog asking for the passphrase.
-It is recommended to [config ssh login without password](https://askubuntu.com/a/46935).
-
-If you want to type special chars (e.g. TAB and Ctrl+C) in line mode, first type Ctrl+V and then type TAB (or Ctrl+C).
+If `--tmux` is combined with `--client-tmux`, the host tmux prefix is changed to Ctrl+A, mouse is disabled,
+and the client tmux mouse is enabled.
+Specify `--no-change-prefix-with-client-tmux` after `--tmux` if you don't want to change host tmux prefix.
 
 It is not recommended to use `spssh_cp.sh` for very large files because it is very inefficient
 (HOST: tar -> (compress program) -> base64; CLIENTS: un-base64 -> (compress program) -> un-tar.
@@ -109,12 +113,19 @@ For slow connections (<5MB/s), `--compress` for `spssh.sh` may help to reduce th
 And `--compress-program zstd` for `spssh_cp.sh` can be used to compress high compression ratio files.
 In other cases, these options are not recommended to use.
 
+`--safe-mode` and `--client-tmux` are very slow for sending files.
+`--safe-mode` disables stdio buffering when receiving data.
+
+## Issues
+
+You can [specify `SSH_ASKPASS` program to provide the passphrase](https://stackoverflow.com/a/15090479/9543140),
+otherwise ssh will open an GUI window dialog asking for the passphrase.
+It is recommended to [config ssh login without password](https://askubuntu.com/a/46935).
+
+If you want to type special chars (e.g. TAB and Ctrl+C) in line mode, first type Ctrl+V and then type TAB (or Ctrl+C).
+
 In some circumstances, the `TMPDIR` is not deleted after abnormal exit. You can delete `/tmp/tmp.*.spssh` manually.
 It is not necessary to do it because they will be deleted after reboot.
-
-It is not possible to auto resize the terminal size if window size changed,
-you can run `stty cols COLUMNS rows LINES` to change it manually.
-In tmux host REPL (and client is not in tmux), you can type `#RESIZE` to send a stty command.
 
 ## Related Tools
 
