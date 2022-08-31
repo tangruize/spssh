@@ -12,7 +12,7 @@ TMUX_DETACH=${TMUX_DETACH:-false}
 #DEFAULT_TERM=gnome-terminal
 DEFAULT_TERM=$DEFAULT_TERM
 
-# Client SSH run tmux
+# Run tmux in client SSH (client must have "tmux" installed!)
 #CLIENT_TMUX=true
 CLIENT_TMUX=${CLIENT_TMUX:-false}
 
@@ -24,15 +24,15 @@ AUTO_RESIZE=${AUTO_RESIZE:-false}
 #GEOMETRIES=(80x24 110x28 ..)
 GEOMETRIES=(${GEOMETRY[@]})
 
-# Use `script` to create a fake tty
+# Not to allocate tty, use "script" to create a fake tty (client must have "script" installed!)
 #FAKE_TTY=true
 FAKE_TTY=${FAKE_TTY:-false}
 
-# Not to allocate tty (fast for sending files)
+# Not to allocate tty (fast for sending files), it defines a "_start" function to allocate a fake tty
 #NO_TTY=true
 NO_TTY=${NO_TTY:-false}
 
-# If stdin is not tty, use NO_TTY
+# If stdin is not tty, set NO_TTY=true
 #NO_TTY_IF_PIPED=true
 NO_TTY_IF_PIPED=${NO_TTY_IF_PIPED:-false}
 
@@ -89,11 +89,14 @@ function repl {
         else
             echo ", Ctrl + D to exit current repl, Ctrl + \\ to switch line/char mode:" 1>&2
         fi
-        trap "rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d "$TMPDIR" && rmdir --ignore-fail-on-non-empty "$TMPDIR" 2> /dev/null" EXIT
+        EXIT_CMD="rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d $TMPDIR && rmdir --ignore-fail-on-non-empty $TMPDIR 2> /dev/null"
+        trap "$EXIT_CMD" EXIT
         stty intr undef
-        bash -c "m=l; function resize() { if test -n \"\$TMUX\"; then W=\$(tput cols); H=\$(tput lines); echo \" test -z \\\$TMUX && stty cols \$W rows \$H 2>/dev/null\"; fi }; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; elif test \"\$r\" = '#RESIZE'; then resize; else echo \"\$r\"; fi; }; while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history"
+        bash -c "resize() { if test -n \"\$TMUX\"; then W=\$(tput cols); H=\$(tput lines); echo \" test -z \\\$TMUX && stty cols \$W rows \$H 2>/dev/null\"; fi }; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; elif test \"\$r\" = '#RESIZE'; then resize; else echo \"\$r\"; fi; }; run_repl() { m=l; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history;  while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history; }; export -f resize cmr cme lmr lme run_repl; exec bash -c 'run_repl'"
+        eval "$EXIT_CMD"
+        trap EXIT
         if test "$IS_KILL" = "true"; then
-            find $TMPDIR -type p -exec lsof -t {} + | xargs --no-run-if-empty kill
+            find $TMPDIR -type p -exec lsof -t {} + 2>/dev/null | xargs --no-run-if-empty kill
         fi
         stty intr ^C
     else
@@ -210,28 +213,27 @@ done
 if test "$#" -eq 0 && (test -z "$HAS_ARG" || test "$XTERM" != "tmux"); then
     usage
     exit 1
+elif [ -z "$(command -v $XTERM)" ]; then
+    echo Error: Cannot find a terminal emulator
+    exit 2
 fi
 
 if test "$NO_TTY_IF_PIPED" = "true" -a ! -t 0; then
     NO_TTY=true
 fi
 
-if test "$FAKE_TTY" != "true" -a "$NO_TTY" != "true"; then
-    SSH_ARGS+=' -tt'
-else
+if test "$NO_TTY" = "true"; then
+    FAKE_TTY=true
+fi
+
+if test "$FAKE_TTY" = "true"; then
     SSH_ARGS+=' -T'
-    if test "$NO_TTY" = "true"; then
-        FAKE_TTY=true
-    fi
+else
+    SSH_ARGS+=' -tt'
 fi
 
 if test "$CLIENT_TMUX" = "true"; then
     AUTO_RESIZE=false
-fi
-
-if [ -z "$(command -v $XTERM)" ]; then
-    echo Error: Cannot find a terminal emulator
-    exit 1
 fi
 
 set -e
@@ -253,7 +255,7 @@ RMTMPDIR="rmdir --ignore-fail-on-non-empty $TMPDIR 2> /dev/null"
 if test -z "$ALREADY_RUNNING"; then
     trap "echo Quitting ...; trap '' INT TERM" INT TERM
     if test "$XTERM" != "tmux"; then
-        trap "rm -f $TMPFILE $SEQFILE 2>/dev/null; $RMTMPDIR" EXIT
+        trap "sleep 1; rm -f $TMPFILE $SEQFILE 2>/dev/null; $RMTMPDIR" EXIT
     fi
 fi
 
@@ -289,7 +291,7 @@ if [ "$XTERM" = "tmux" ]; then
         tmux split-window -t "$SESSION:0"
         tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-l C-m
     fi
-    STTY_CMD=" stty cols $WIDTH rows $HEIGHT;"
+    STTY_CMD=" stty cols $WIDTH rows $HEIGHT 2>/dev/null;"
 else
     KILLHOST="kill -INT -- -$$"
 fi
@@ -318,7 +320,7 @@ function set_geometry() {
             GEOMETRY_OPTIONS="--geometry $(sed -E 's/[0-9]+x[0-9]+(.*)/\1/' <<< "$GEOMETRY")"
         fi
     fi
-    STTY_CMD=" stty cols $WIDTH rows $HEIGHT;"
+    STTY_CMD=" stty cols $WIDTH rows $HEIGHT 2>/dev/null;"
 }
 
 function set_ssh_cmd() {
@@ -327,12 +329,12 @@ function set_ssh_cmd() {
     if [ "$CLIENT_TMUX" = true ]; then
         SSH_NAME_PREFIX=SSH$(echo -n $SESSION | tail -c 2)
         SSH_NAME=$SSH_NAME_PREFIX$(echo -n $(mktemp -u) | tail -c 2)
-        TMUX_CLIENT_ENV="-x $WIDTH -y $((HEIGHT-1)) -e SSH_NO=$SSH_NO"
+        TMUX_CLIENT_ENV="-x $WIDTH -y $((HEIGHT-1)) -e SSH_NO=$SSH_NO -e DISPLAY=\\\${DISPLAY:- }"
         if [ "$NO_TTY" != "true" ]; then
-            # too many escapes ($ cannot be esaped any more) !!
-            TMUX_CLIENT_ENV="$TMUX_CLIENT_ENV -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e DISPLAY=\\\"\\\$DISPLAY\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\""
+            # too many escapes (cannot esape quotes any more) !!
+            TMUX_CLIENT_ENV="$TMUX_CLIENT_ENV -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\""
         fi
-        SSH_START_CMD="$STTY_CMD if tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux set-option -t $SSH_NAME_PREFIX mouse on; exec tmux attach-session -t $SSH_NAME_PREFIX; else tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux set-option -t $SSH_NAME mouse on; exec tmux attach-session -t $SSH_NAME; fi"
+        SSH_START_CMD="$STTY_CMD export SHELL=\\\$SHELL; if tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux set-option -t $SSH_NAME_PREFIX mouse on; exec tmux attach-session -t $SSH_NAME_PREFIX; else tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux set-option -t $SSH_NAME mouse on; exec tmux attach-session -t $SSH_NAME; fi"
     fi
 
     SSH_START_CMD="${SSH_START_CMD:-$STTY_CMD export SSH_NO=$SSH_NO; exec \\\$SHELL}"
@@ -347,7 +349,7 @@ function set_ssh_cmd() {
 }
 
 KILLCAT="pkill -g 0 -x cat; pkill -g 0 -x python3"
-KILLEXIT="find $TMPDIR -type p -exec false {} + && ($RMTMPDIR; $KILLHOST)"
+KILLEXIT="find $TMPDIR -type p -exec false {} + 2>/dev/null && ($RMTMPDIR; $KILLHOST)"
 
 function set_cat() {
     FIFO_FILE=$1
@@ -385,7 +387,7 @@ while test "$#" -gt 0; do
     set_geometry
     set_ssh_cmd $SEQ
     set_cat $TMPFIFO
-    CMD="bash -c 'stty -echo -echoctl raw; (tail -f $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & ($CAT_PROGRAM; rm -f $TMPFIFO; $KILLEXIT)'"
+    CMD="bash -c 'run_ssh() { trap \"rm -f $TMPFIFO; $KILLEXIT\" EXIT; stty -echo -echoctl raw; (tail -n +1 -F $TMPFILE >> $TMPFIFO 2>/dev/null; $KILLCAT) & (setsid ssh $SSH_ARGS $1 \"$SSH_START_CMD\" < $TMPFIFO; $KILLCAT) & $CAT_PROGRAM; }; export -f run_ssh; exec bash -c \"run_ssh\"'"
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"
     fi
@@ -408,9 +410,11 @@ while test "$#" -gt 0; do
 done
 
 if test -z "$ALREADY_RUNNING"; then
-    if test -t 0 -a "$XTERM" = "tmux" -a -z "$CURRENT_IN_TMUX"; then
+    if test "$XTERM" = "tmux" -a "$CURRENT_IN_TMUX" != "true"; then
         tmux select-window -t "$SESSION:0"
         tmux select-pane -t "$SESSION:0.0"
+    fi
+    if test -t 0 -a "$XTERM" = "tmux" -a "$CURRENT_IN_TMUX" != "true"; then
         if test "$TMUX_DETACH" != "true"; then
             exec tmux attach-session -d -t "$SESSION"
         fi

@@ -23,10 +23,16 @@ BEGIN_NO_ASK=${BEGIN_NO_ASK:-false}
 #EXIT_NO_ASK=true
 EXIT_NO_ASK=${EXIT_NO_ASK:-false}
 
-# Fake tty is used to run "script" program after receiving files.
+# Fake tty is used to run "_start" cmd after receiving files.
 # It is combined with spssh.sh --no-tty option, which makes file transferring super fast.
 #FAKE_TTY=true
 FAKE_TTY=${FAKE_TTY:-false}
+
+# Set FAKE_TTY=true, after sending "_start" cmd to start a fake tty in client,
+# it sends big paddings to feed stdio so that piped stdin can enter fake tty properly.
+# In normal cases, it is not needed. If the spssh.sh set "--client-tmux" option, it is needed.
+#PADDING_FAKE_TTY=true
+PADDING_FAKE_TTY=${PADDING_FAKE_TTY:-false}
 
 if test -t 1 -a -n "$TMPDIR"; then
     env ALREADY_RUNNING=true "$0" $@ >> "$TMPDIR/host"
@@ -120,8 +126,8 @@ fi
 
 echo -e " stty -echo 2>/dev/null; BAK=\$PS1; unset PS1"
 sleep 0.5
-echo " echo -en Receiving '\"$FILE\" ...\n\r'; mkdir -p '$DSTDIR'; bash -c \"trap 'if test \\\$? -ne 0; then echo; echo -en \\\"Interrupted by user\n\r\\\"; sleep 3; exit 1; fi' EXIT; stty -echo -icanon intr undef 2>/dev/null; $RECEIVE_CMD | base64 -d 2> /dev/null | dd bs=64K iflag=fullblock status=progress 2> >(stdbuf -o0 tr '\r' '\n' | stdbuf -oL grep '/s' | stdbuf -o0 tr '\n' '\r' >&2; echo >&2) | tar x $COMPRESS_ARGS -C '$DSTDIR' 2> /dev/null\" || exit 1"
-(cd "$SRCDIR"; print4k; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo ' stty echo icanon intr ^C 2>/dev/null; PS1=$BAK; unset BAK')
+echo " echo -en Receiving '\"$FILE\" ...\n\r'; mkdir -p '$DSTDIR'; bash -c \"trap 'if test \\\$? -ne 0; then echo; echo -en \\\"Interrupted by user\n\r\\\"; sleep 3; exit 1; fi' EXIT; stty -echo -icanon intr undef 2>/dev/null; $RECEIVE_CMD | base64 -d 2> /dev/null | dd bs=64K iflag=fullblock status=progress 2> >(stdbuf -o0 tr '\r' '\n' | stdbuf -oL grep '/s' | stdbuf -o0 tr '\n' '\r' >&2; echo >&2) | tar x $COMPRESS_ARGS -C '$DSTDIR' 2> /dev/null; sed -u '/^$/q' >/dev/null\" || exit 1"
+(cd "$SRCDIR"; print4k; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo; echo ' stty echo icanon intr ^C 2>/dev/null; PS1=${BAK:-$PS1}; unset BAK')
 
 if test "$FAKE_TTY" = "true"; then
     echo " _start"
