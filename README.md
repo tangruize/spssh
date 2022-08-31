@@ -6,7 +6,7 @@ Manage multiple SSH sessions like a boss.
 
 SPSSH can execute the same command simultaneously and execute different commands separately on remote servers using SSH.
 It supports GUI terminal emulators (e.g. gnome-terminal, konsole, mate-terminal and xfce4-terminal) to open SSH windows.
-And it also supports tmux.
+And it also supports tmux (version >= 3.2).
 Additionally, there is a simple copy script to copy files to all servers.
 
 ### Dependencies

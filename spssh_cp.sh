@@ -66,6 +66,10 @@ while test "$#" -gt 0; do
             # combined with spssh.sh --no-tty
             FAKE_TTY=true
             ;;
+        -P|--padding-fake-tty)
+            FAKE_TTY=true
+            PADDING_FAKE_TTY=true
+            ;;
         -*)
             usage
             exit 1
@@ -101,25 +105,28 @@ if test -z "$ALREADY_RUNNING"; then
     fi
 fi
 
+function print4k() {
+    MSG="$1"
+    eval "awk 'BEGIN{ printf \"$MSG\"; for (c=0; c<4095-${#MSG}; c++) { printf \" \" } printf \"\n\" }' | dd bs=4K 2>/dev/null"
+}
+
 if test "$SAFE_MODE" = 'true'; then
     RECEIVE_CMD="sed -u '1d;/^$/q'"
     SENTINEL_CMD="echo"
 else
     RECEIVE_CMD="stdbuf -i 4K sed '1d;/^ /q'"
-    SENTINEL_CMD="awk 'BEGIN{ for (b=0; b<2; b++) { for (c=0; c<4095; c++) { printf \" \" } printf \"\n\" } }' | dd bs=4K 2>/dev/null"
+    SENTINEL_CMD="print4k; print4k"
 fi
-SENTINEL_BEFORE_CMD="awk 'BEGIN{ for (c=0; c<4095; c++) { printf \" \" } printf \"\n\" }' | dd bs=4K 2>/dev/null"
 
 echo -e " stty -echo 2>/dev/null; BAK=\$PS1; unset PS1"
 sleep 0.5
 echo " echo -en Receiving '\"$FILE\" ...\n\r'; mkdir -p '$DSTDIR'; bash -c \"trap 'if test \\\$? -ne 0; then echo; echo -en \\\"Interrupted by user\n\r\\\"; sleep 3; exit 1; fi' EXIT; stty -echo -icanon intr undef 2>/dev/null; $RECEIVE_CMD | base64 -d 2> /dev/null | dd bs=64K iflag=fullblock status=progress 2> >(stdbuf -o0 tr '\r' '\n' | stdbuf -oL grep '/s' | stdbuf -o0 tr '\n' '\r' >&2; echo >&2) | tar x $COMPRESS_ARGS -C '$DSTDIR' 2> /dev/null\" || exit 1"
-(cd "$SRCDIR"; eval "$SENTINEL_BEFORE_CMD"; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo " stty echo icanon intr ^C 2>/dev/null; PS1=\$BAK; unset BAK")
+(cd "$SRCDIR"; print4k; eval find "'$FILE'" "$FIND_ARGS" -print0 | tar cv $COMPRESS_ARGS --null -T - | dd bs=64K | base64 -w 4095; eval "$SENTINEL_CMD"; echo ' stty echo icanon intr ^C 2>/dev/null; PS1=$BAK; unset BAK')
 
 if test "$FAKE_TTY" = "true"; then
-    if test -n "$TMPDIR" -a -n "$TMUX" -a -n "$WIDTH"; then
-        echo ' if test $TERM = dumb; then env TERM=xterm-256color script -qc "stty cols '$WIDTH' rows '$HEIGHT'; $SHELL" /dev/null; exit; fi'
-    else
-        echo ' if test $TERM = dumb; then env TERM=xterm-256color script -qc $SHELL /dev/null; exit; fi'
+    echo " _start"
+    if test "$PADDING_FAKE_TTY" = "true"; then
+        print4k;print4k;print4k
     fi
 fi
 
@@ -136,7 +143,7 @@ if test -z "$ALREADY_RUNNING" -o ! -t 0; then
     fi
     REPLY=${REPLY,,}
     if test "$REPLY" != "y"; then
-        env FAKE_TTY=$FAKE_TTY $(dirname "$0")/spssh.sh --repl --pipe
+        $(dirname "$0")/spssh.sh --repl --pipe
         EXIT_STATUS=$?
     fi
     if test "$REPLY" = "y" -o "$EXIT_STATUS" != 0; then
