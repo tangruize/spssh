@@ -198,6 +198,9 @@ while test "$#" -gt 0; do
             # very fast for sending files, combined with spssh_cp.sh --fake-tty
             NO_TTY=true
             ;;
+        -S|--simple-tmp-filename)
+            SIMPLE_TMP_FN=true
+            ;;
         -*)
             usage
             exit 1
@@ -378,7 +381,11 @@ EOF
 }
 
 while test "$#" -gt 0; do
-    TMPFIFO=`mktemp -u --suffix=.ssh`
+    if test "$SIMPLE_TMP_FN" = true; then
+        TMPFIFO="$TMPDIR/ssh"
+    else
+        TMPFIFO=`mktemp -u --suffix=.ssh`
+    fi
     SEQ=$(cat $SEQFILE)
     SEQ=$((SEQ+1))
     echo $SEQ > "$SEQFILE"
