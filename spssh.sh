@@ -201,6 +201,9 @@ while test "$#" -gt 0; do
         -S|--simple-tmp-filename)
             SIMPLE_TMP_FN=true
             ;;
+        -H|--no-host-key-checking)
+            SSH_ARGS+=' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+            ;;
         -*)
             usage
             exit 1
