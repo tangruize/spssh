@@ -158,6 +158,10 @@ while test "$#" -gt 0; do
                         TMUX_NO_CHANGE_PREFIX=true
                         shift
                         ;;
+                    -s|--save-output)
+                        TMUX_SAVE_OUTPUT=true
+                        shift
+                        ;;
                     *)
                         break
                         ;;
@@ -401,10 +405,13 @@ while test "$#" -gt 0; do
     if test -n "$ALREADY_RUNNING"; then
         truncate -cs 0 "$TMPFILE"
     fi
+    if test -n "$TMUX_SAVE_OUTPUT"; then
+        TMUX_SAVE_CMD="; tmux capture-pane -pS - -t \$TMUX_PANE > log.$SEQ"
+    fi
     NAME=$(echo "$1" | grep -o '[^ ]*@[^ ]*' | head -1 | tr '.' '_')_${TMPFIFO##*.}
     case "$XTERM" in
         tmux)
-            tmux new-window -d -t "$SESSION" -n "$NAME" "exec $CMD"
+            tmux new-window -d -t "$SESSION" -n "$NAME" "$CMD$TMUX_SAVE_CMD"
             ;;
         gnome-terminal)
             eval $XTERM --geometry="$GEOMETRY" --title="$NAME" -- $CMD & sleep 0.1
