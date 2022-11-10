@@ -299,6 +299,10 @@ if [ "$XTERM" = "tmux" ]; then
     fi
     if test "$TMUX_RUN_HOST_CMD"; then
         tmux split-window -t "$SESSION:0"
+        if test -n "$TMUX_SAVE_OUTPUT"; then
+            TMUX_SAVE_CMD='trap "tmux capture-pane -pS - -t $TMUX_PANE > log.host" EXIT'
+            tmux send-keys -t "$SESSION:0" "$TMUX_SAVE_CMD" C-m
+        fi
         tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-l C-m
     fi
     STTY_CMD=" stty cols $WIDTH rows $HEIGHT 2>/dev/null;"
