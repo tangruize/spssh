@@ -177,6 +177,9 @@ while test "$#" -gt 0; do
         -b|--force-bash)
             FORCE_BASH=true
             ;;
+        -q|--quiet)
+            QUIET=true
+            ;;
         -P|--no-tty-if-piped)
             NO_TTY_IF_PIPED=true
             ;;
@@ -253,7 +256,7 @@ set -e
 if test -z "$TMPDIR"; then
     TMPDIR=$(mktemp -d -p /tmp --suffix=.spssh)
     export TMPDIR
-    echo "[SPSSH] TMPDIR=$TMPDIR" 1>&2
+    test "$QUIET" != true && echo "[SPSSH] TMPDIR=$TMPDIR" 1>&2
 elif test -f "$TMPDIR/host"; then
     ALREADY_RUNNING=true
 else
@@ -283,7 +286,7 @@ fi
 
 if [ "$XTERM" = "tmux" ]; then
     if test -z "$ALREADY_RUNNING"; then
-        echo "[SPSSH] SESSION=$SESSION" 1>&2
+        test "$QUIET" != true && echo "[SPSSH] SESSION=$SESSION" 1>&2
         export WIDTH=$(tput cols || echo 80)
         export HEIGHT=$(($(tput lines || echo 24)-1))
         set -e
@@ -445,7 +448,11 @@ if test -z "$ALREADY_RUNNING"; then
     fi
     if test -t 0 -a "$XTERM" = "tmux" -a "$CURRENT_IN_TMUX" != "true"; then
         if test "$TMUX_DETACH" != "true"; then
-            exec tmux attach-session -d -t "$SESSION"
+            if test "$QUIET" = true; then
+                exec tmux attach-session -d -t "$SESSION" >/dev/null
+            else
+                exec tmux attach-session -d -t "$SESSION"
+            fi
         fi
     else
         repl $REPL_KILL_WHEN_EXIT
