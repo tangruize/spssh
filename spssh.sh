@@ -162,6 +162,11 @@ while test "$#" -gt 0; do
                         TMUX_SAVE_OUTPUT=true
                         shift
                         ;;
+                    -w|--wait-for)
+                        TMUX_WAIT_FOR_S="$3"
+                        TMUX_WAIT_FOR_CMD="tmux wait-for -S '$TMUX_WAIT_FOR_S'"
+                        shift 2
+                        ;;
                     *)
                         break
                         ;;
@@ -297,7 +302,7 @@ if [ "$XTERM" = "tmux" ]; then
                     TMUX_CHANGE_PREFIX="tmux set-option prefix C-a; tmux bind C-a send-prefix;"
                 fi
             fi
-            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "bash -c 'set -x; $TMUX_MOUSE_OPTION $TMUX_CHANGE_PREFIX'; exec $0 --repl $REPL_KILL_WHEN_EXIT"
+            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "bash -c 'set -x; $TMUX_MOUSE_OPTION $TMUX_CHANGE_PREFIX'; $0 --repl $REPL_KILL_WHEN_EXIT; $TMUX_WAIT_FOR_CMD"
         elif test -n "$TMUX"; then
             CURRENT_IN_TMUX=true
         else
