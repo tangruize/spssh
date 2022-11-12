@@ -82,7 +82,7 @@ function repl {
         exit 1
     fi
     if test -t 0; then
-        HISTORY=`mktemp --suffix=.history`
+        HISTORY=$(mktemp --suffix=.history)
         echo -n "Run commands on all servers" 1>&2
         if test "$IS_KILL" = true -o "$1" = "$REPL_PIPE"; then
             echo ", Ctrl + D to exit all servers, Ctrl + \\ to switch line/char mode:" 1>&2
@@ -174,6 +174,9 @@ while test "$#" -gt 0; do
         -a|--auto-resize)
             AUTO_RESIZE=true
             ;;
+        -b|--force-bash)
+            FORCE_BASH=true
+            ;;
         -P|--no-tty-if-piped)
             NO_TTY_IF_PIPED=true
             ;;
@@ -248,7 +251,7 @@ fi
 
 set -e
 if test -z "$TMPDIR"; then
-    TMPDIR=`mktemp -d -p /tmp --suffix=.spssh`
+    TMPDIR=$(mktemp -d -p /tmp --suffix=.spssh)
     export TMPDIR
     echo "[SPSSH] TMPDIR=$TMPDIR" 1>&2
 elif test -f "$TMPDIR/host"; then
@@ -271,6 +274,11 @@ fi
 
 if test -z "$SESSION"; then
     export SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
+fi
+
+if test "$FORCE_BASH" = "true"; then
+    EXPORT_SHELL_CMD="export SHELL=/bin/bash; "
+    TMUX_HOST_SHELL="/bin/bash"
 fi
 
 if [ "$XTERM" = "tmux" ]; then
@@ -298,7 +306,7 @@ if [ "$XTERM" = "tmux" ]; then
         KILLHOST="tmux kill-pane -t $SESSION:0.0"
     fi
     if test "$TMUX_RUN_HOST_CMD"; then
-        tmux split-window -t "$SESSION:0"
+        tmux split-window -t "$SESSION:0" $TMUX_HOST_SHELL
         if test -n "$TMUX_SAVE_OUTPUT"; then
             TMUX_SAVE_CMD='trap "tmux capture-pane -pS - -t $TMUX_PANE > log.host" EXIT'
             tmux send-keys -t "$SESSION:0" "$TMUX_SAVE_CMD" C-m
@@ -348,10 +356,10 @@ function set_ssh_cmd() {
             # too many escapes (cannot esape quotes any more) !!
             TMUX_CLIENT_ENV="$TMUX_CLIENT_ENV -e SSH_CLIENT=\\\"\\\$SSH_CLIENT\\\" -e SSH_CONNECTION=\\\"\\\$SSH_CONNECTION\\\" -e SSH_TTY=\\\"\\\$SSH_TTY\\\""
         fi
-        SSH_START_CMD="$STTY_CMD export SHELL=\\\$SHELL; if tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux set-option -t $SSH_NAME_PREFIX mouse on; exec tmux attach-session -t $SSH_NAME_PREFIX; else tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux set-option -t $SSH_NAME mouse on; exec tmux attach-session -t $SSH_NAME; fi"
+        SSH_START_CMD="$STTY_CMD export SHELL=\\\$SHELL; $EXPORT_SHELL_CMD if tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME_PREFIX $TMUX_CLIENT_ENV 2>/dev/null; then tmux set-option -t $SSH_NAME_PREFIX mouse on; exec tmux attach-session -t $SSH_NAME_PREFIX; else tmux new-session -d -t $SSH_NAME_PREFIX -s $SSH_NAME $TMUX_CLIENT_ENV; tmux new-window -t $SSH_NAME; tmux set-option -t $SSH_NAME mouse on; exec tmux attach-session -t $SSH_NAME; fi"
     fi
 
-    SSH_START_CMD="${SSH_START_CMD:-$STTY_CMD export SSH_NO=$SSH_NO; exec \\\$SHELL}"
+    SSH_START_CMD="${SSH_START_CMD:-$STTY_CMD export SSH_NO=$SSH_NO; $EXPORT_SHELL_CMD exec \\\$SHELL}"
 
     if [ "$FAKE_TTY" = "true" ]; then
         SSH_START_CMD="export TERM=xterm-256color; exec script -qc \\\"${SSH_START_CMD//\\/\\\\\\}\\\" /dev/null"
@@ -395,7 +403,7 @@ while test "$#" -gt 0; do
     if test "$SIMPLE_TMP_FN" = true; then
         TMPFIFO="$TMPDIR/ssh"
     else
-        TMPFIFO=`mktemp -u --suffix=.ssh`
+        TMPFIFO=$(mktemp -u --suffix=.ssh)
     fi
     SEQ=$(cat $SEQFILE)
     SEQ=$((SEQ+1))
