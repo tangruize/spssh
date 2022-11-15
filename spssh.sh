@@ -217,7 +217,7 @@ while test "$#" -gt 0; do
             SIMPLE_TMP_FN=true
             ;;
         -H|--no-host-key-checking)
-            SSH_ARGS+=' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+            SSH_ARGS+=' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
             ;;
         -*)
             usage
