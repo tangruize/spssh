@@ -316,7 +316,7 @@ if [ "$XTERM" = "tmux" ]; then
     if test "$TMUX_RUN_HOST_CMD"; then
         tmux split-window -t "$SESSION:0" $TMUX_HOST_SHELL
         if test -n "$TMUX_SAVE_OUTPUT"; then
-            TMUX_SAVE_CMD='trap "tmux capture-pane -pS - -t $TMUX_PANE > log.host" EXIT'
+            TMUX_SAVE_CMD='trap "tmux capture-pane -pJS - -t $TMUX_PANE > log.host" EXIT'
             tmux send-keys -t "$SESSION:0" "$TMUX_SAVE_CMD" C-m
         fi
         tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-l C-m
@@ -426,7 +426,7 @@ while test "$#" -gt 0; do
         truncate -cs 0 "$TMPFILE"
     fi
     if test -n "$TMUX_SAVE_OUTPUT"; then
-        TMUX_SAVE_CMD="; tmux capture-pane -pS - -t \$TMUX_PANE > log.$SEQ"
+        TMUX_SAVE_CMD="; tmux capture-pane -pJS - -t \$TMUX_PANE > log.$SEQ"
     fi
     NAME=$(echo "$1" | grep -o '[^ ]*@[^ ]*' | head -1 | tr '.' '_')_${TMPFIFO##*.}
     case "$XTERM" in
