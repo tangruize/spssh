@@ -54,6 +54,10 @@ REPL_KILL_WHEN_EXIT="--kill-when-exit"
 REPL_PIPE="--pipe"
 
 function repl {
+    local timeout=$2
+    if [ -n "$timeout" ]; then
+        TIMEOUT_CMD="timeout --foreground $timeout"
+    fi
     if [ "$1" = "$REPL_PIPE" ]; then
         if [ -z "$SESSION" ]; then
             if [ -d "$TMPDIR" ]; then
@@ -92,7 +96,7 @@ function repl {
         EXIT_CMD="rm -f $HISTORY; test '$IS_KILL' = true && rm -f $TMPFILE $SEQFILE 2>/dev/null; test -d $TMPDIR && rmdir --ignore-fail-on-non-empty $TMPDIR 2> /dev/null"
         trap "$EXIT_CMD" EXIT
         stty intr undef
-        bash -c "resize() { if test -n \"\$TMUX\"; then W=\$(tput cols); H=\$(tput lines); echo \" test -z \\\$TMUX && stty cols \$W rows \$H 2>/dev/null\"; fi }; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; elif test \"\$r\" = '#RESIZE'; then resize; else echo \"\$r\"; fi; }; run_repl() { m=l; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history;  while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history; }; export -f resize cmr cme lmr lme run_repl; exec bash -c 'run_repl'"
+        bash -c "resize() { if test -n \"\$TMUX\"; then W=\$(tput cols); H=\$(tput lines); echo \" test -z \\\$TMUX && stty cols \$W rows \$H 2>/dev/null\"; fi }; cmr() { read -rN 1 r; }; cme() { echo -n \"\$r\"; }; lmr() { read -rep '$ ' r; }; lme() { if test \"\$s\" = 1; then true; elif test \"\$r\" = '#RESIZE'; then resize; else echo \"\$r\"; fi; }; run_repl() { m=l; trap 'echo 1>&2; echo 1>&2 -n Presss ENTER to switch to\ ; if test \$m = l; then m=c; echo 1>&2 char mode; else m=l; s=1; echo 1>&2 line mode; fi' QUIT; HISTFILE=$HISTORY; set -o history;  while eval \\\${m}mr; do eval \\\${m}me | tee -a $TMPFILE $HISTORY $NO_PIPE_ARG; history -n; unset s; done; set +o history; }; export -f resize cmr cme lmr lme run_repl; exec $TIMEOUT_CMD bash -c 'run_repl'"
         eval "$EXIT_CMD"
         trap EXIT
         if test "$IS_KILL" = "true"; then
@@ -199,7 +203,7 @@ while test "$#" -gt 0; do
                     exit 2
                 fi
             fi
-            repl $2
+            repl $2 $TIMEOUT
             exit
             ;;
         -C|--compress)
@@ -218,6 +222,11 @@ while test "$#" -gt 0; do
             ;;
         -H|--no-host-key-checking)
             SSH_ARGS+=' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
+            ;;
+        -T|--timeout)
+            TIMEOUT=$2
+            TIMEOUT_ARG="-T $TIMEOUT"
+            shift
             ;;
         -*)
             usage
@@ -302,11 +311,11 @@ if [ "$XTERM" = "tmux" ]; then
                     TMUX_CHANGE_PREFIX="tmux set-option prefix C-a; tmux bind C-a send-prefix;"
                 fi
             fi
-            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "bash -c 'set -x; $TMUX_MOUSE_OPTION $TMUX_CHANGE_PREFIX'; $0 --repl $REPL_KILL_WHEN_EXIT; $TMUX_WAIT_FOR_CMD"
+            tmux new-session -d -s "$SESSION" -n "HOST" -x "$WIDTH" -y "$HEIGHT" -e "TMUX_AUTO_EXIT=$TMUX_AUTO_EXIT" -e "DEFAULT_TERM=$DEFAULT_TERM" -e "CLIENT_TMUX=$CLIENT_TMUX" -e "TMPDIR=$TMPDIR" -e "DISPLAY=$DISPLAY" -e "SESSION=$SESSION" -e "WIDTH=$WIDTH" -e "HEIGHT=$HEIGHT" "bash -c 'set -x; $TMUX_MOUSE_OPTION $TMUX_CHANGE_PREFIX'; $0 $TIMEOUT_ARG --repl $REPL_KILL_WHEN_EXIT; $TMUX_WAIT_FOR_CMD"
         elif test -n "$TMUX"; then
             CURRENT_IN_TMUX=true
         else
-            tmux split-window -t "$SESSION:0" "exec $0 --repl $REPL_KILL_WHEN_EXIT"
+            tmux split-window -t "$SESSION:0" "exec $0 $TIMEOUT_ARG --repl $REPL_KILL_WHEN_EXIT"
         fi
         set +e
     fi
@@ -460,8 +469,8 @@ if test -z "$ALREADY_RUNNING"; then
             fi
         fi
     else
-        repl $REPL_KILL_WHEN_EXIT
+        repl $REPL_KILL_WHEN_EXIT $TIMEOUT
     fi
 elif ! test -t 0; then
-    repl
+    repl "" $TIMEOUT
 fi
