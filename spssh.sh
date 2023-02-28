@@ -327,6 +327,9 @@ if [ "$XTERM" = "tmux" ]; then
         if test -n "$TMUX_SAVE_OUTPUT"; then
             TMUX_SAVE_CMD='trap "tmux capture-pane -pJS - -t $TMUX_PANE > log.host" EXIT'
             tmux send-keys -t "$SESSION:0" "$TMUX_SAVE_CMD" C-m
+            if test "$KILLHOST"; then
+                KILLHOST="sleep 0.1; $KILLHOST"
+            fi
         fi
         tmux send-keys -t "$SESSION:0" "$TMUX_RUN_HOST_CMD" C-l C-m
     fi
