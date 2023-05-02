@@ -61,10 +61,10 @@ function repl {
     if [ "$1" = "$REPL_PIPE" ]; then
         if [ -z "$SESSION" ]; then
             if [ -d "$TMPDIR" ]; then
-                SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
+                SESSION=SSH$(echo -n "${TMPDIR%.spssh}" | tail -c4)
             else
-                test -t 0 && read -p "Enter last two chars of tmux SESSION (press ENTER if backend is not tmux): " SESSION
-                SESSION=${SESSION:+SPSSH${SESSION#SPSSH}}
+                test -t 0 && read -p "Enter last four chars of tmux SESSION (press ENTER if backend is not tmux): " SESSION
+                SESSION=${SESSION:+SSH${SESSION#SSH}}
             fi
         fi
         if [ -n "$SESSION" -a -t 0 ]; then
@@ -290,7 +290,7 @@ if test -z "$ALREADY_RUNNING"; then
 fi
 
 if test -z "$SESSION"; then
-    export SESSION=SPSSH$(echo -n "${TMPDIR%.spssh}" | tail -c2)
+    export SESSION=SSH$(echo -n "${TMPDIR%.spssh}" | tail -c4)
 fi
 
 if test "$FORCE_BASH" = "true"; then
@@ -369,7 +369,7 @@ function set_ssh_cmd() {
     SSH_START_CMD=
     SSH_NO=$1
     if [ "$CLIENT_TMUX" = true ]; then
-        SSH_NAME_PREFIX=SSH$(echo -n $SESSION | tail -c 2)
+        SSH_NAME_PREFIX=SSH$(echo -n ${SESSION#SSH} | head -c 2)
         SSH_NAME=$SSH_NAME_PREFIX$(echo -n $(mktemp -u) | tail -c 2)
         TMUX_CLIENT_ENV="-x $WIDTH -y $((HEIGHT-1)) -e SSH_NO=$SSH_NO -e DISPLAY=\\\${DISPLAY:- }"
         if [ "$NO_TTY" != "true" ]; then
