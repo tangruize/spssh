@@ -470,7 +470,7 @@ done
 if test -z "$ALREADY_RUNNING"; then
     if test "$TMUX_JOIN_WINDOWS" = true; then
         for ((s=$SEQ;s>0;s--)); do
-            tmux join-pane -d -s @$s -t 0
+            tmux join-pane -d -s @$s -t $SESSION:0${TMUX_RUN_HOST_CMD:+.1}
         done
         tmux select-layout even-vertical
     fi
