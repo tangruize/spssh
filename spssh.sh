@@ -171,6 +171,10 @@ while test "$#" -gt 0; do
                         TMUX_WAIT_FOR_CMD="tmux wait-for -S '$TMUX_WAIT_FOR_S'"
                         shift 2
                         ;;
+                    -j|--join-windows)
+                        TMUX_JOIN_WINDOWS=true
+                        shift
+                        ;;
                     *)
                         break
                         ;;
@@ -459,6 +463,12 @@ while test "$#" -gt 0; do
 done
 
 if test -z "$ALREADY_RUNNING"; then
+    if test "$TMUX_JOIN_WINDOWS" = true; then
+        for ((s=$SEQ;s>0;s--)); do
+            tmux join-pane -d -s @$s -t 0
+        done
+        tmux select-layout even-vertical
+    fi
     if test "$XTERM" = "tmux" -a "$CURRENT_IN_TMUX" != "true"; then
         tmux select-window -t "$SESSION:0"
         tmux select-pane -t "$SESSION:0.0"
