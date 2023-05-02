@@ -118,14 +118,18 @@ function repl {
 }
 
 function usage() {
-    echo "Usage: spssh.sh [--tmux [--detach --auto-exit --run-host-cmd 'host cmd']]"
-    echo "                [--gnome/mate/xfce4-terminal/konsole [--geometry 80x24+0+0 ..]]"
-    echo "                [--client-tmux] [--auto-resize] [--compress]"
-    echo "                [--fake-tty] [--no-tty] 'user1@server1 [SSH_ARGS ..]' .."
-    echo "Usage: spssh.sh --tmux [--detach --auto-exit --run-host-cmd 'host cmd']"
-    echo "Usage: spssh.sh --repl [$REPL_KILL_WHEN_EXIT]  # in tmux session"
-    echo "Usage: spssh.sh [-t [-d -e -r 'cmd']]/[-g/-m/-x/-k [-G 'geometry' ..]]"
-    echo "                [-c] [-a] [-C] [-F/-N] 'user1@server1 [SSH_ARGS ..]' .."
+    cat <<EOF
+spssh.sh [--tmux [--detach --auto-exit --run-host-cmd --save-output --wait-for 
+          --join-windows --no-change-prefix-with-client-tmux 'host cmd']]
+         [--gnome/mate/xfce4-terminal --konsole [--geometry 80x24+0+0 ..]]
+         [--client-tmux] [--auto-resize] [--force-bash] [--quiet] [--compress] 
+         [--fake-tty] [--no-tty] [--no-tty-if-piped] [--no-host-key-checking]
+         [--timeout] [--simple-tmp-filename] 'user1@server1 [SSH_ARGS ..]' ..
+spssh.sh [-t [-d -e -r 'cmd' -s -w -j -n]]/[-g/-m/-x/-k [-G 'geometry' ..]]
+         [-c] [-a] [-b] [-q] [-C] [-F/-N/-P] [-H] [-T] [-S]
+         'user1@server1 [SSH_ARGS ..]' ..
+spssh.sh --repl [$REPL_KILL_WHEN_EXIT]  # in tmux session
+EOF
 }
 
 while test "$#" -gt 0; do
@@ -268,6 +272,7 @@ fi
 
 if test "$CLIENT_TMUX" = "true"; then
     AUTO_RESIZE=false
+    TMUX_JOIN_WINDOWS=false
 fi
 
 set -e
